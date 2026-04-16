@@ -1,0 +1,411 @@
+{
+  "info": {
+    "_postman_id": "pcci-dues-api",
+    "name": "PCCI Membership Dues API",
+    "description": "Complete API for managing membership dues and payments",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Membership Dues",
+      "item": [
+        {
+          "name": "Create New Due",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"member_id\": 1,\n  \"amount\": 5000.00,\n  \"due_year\": 2024,\n  \"due_date\": \"2024-01-31\",\n  \"status\": \"pending\",\n  \"notes\": \"Annual membership dues for 2024\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/membership-dues",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "membership-dues"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List All Dues",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/membership-dues",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "membership-dues"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Single Due",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/membership-dues/1",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "membership-dues",
+                "1"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Pending Dues",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/membership-dues/pending",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "membership-dues",
+                "pending"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Overdue Dues",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/membership-dues/overdue",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "membership-dues",
+                "overdue"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Dues Statistics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/membership-dues/stats",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "membership-dues",
+                "stats"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Member Unpaid Dues",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/members/1/unpaid-dues",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "members",
+                "1",
+                "unpaid-dues"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Due Status",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"paid\",\n  \"notes\": \"Manually marked as paid\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/membership-dues/1",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "membership-dues",
+                "1"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dues Payments",
+      "item": [
+        {
+          "name": "Record Payment (IMPORTANT)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"membership_due_id\": 1,\n  \"or_number\": \"OR-2024-0001\",\n  \"amount\": 5000.00,\n  \"payment_date\": \"2024-03-15\",\n  \"payment_method\": \"cash\",\n  \"reference_number\": null,\n  \"notes\": \"Payment received from member - cash\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/dues-payments",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "dues-payments"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List All Payments",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/dues-payments",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "dues-payments"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Single Payment",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/dues-payments/1",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "dues-payments",
+                "1"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Payments for Due",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/membership-dues/1/payments",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "membership-dues",
+                "1",
+                "payments"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Collection by Year",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/dues-payments/by-year?year=2024",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "dues-payments",
+                "by-year"
+              ],
+              "query": [
+                {
+                  "key": "year",
+                  "value": "2024"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Treasurer Payments",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/dues-payments/treasurer-payments",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "dues-payments",
+                "treasurer-payments"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Payments Statistics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/dues-payments/stats?year=2024",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "dues-payments",
+                "stats"
+              ],
+              "query": [
+                {
+                  "key": "year",
+                  "value": "2024"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000/api",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "your_sanctum_token_here",
+      "type": "string"
+    }
+  ]
+}
