@@ -242,4 +242,4 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::delete('v1/notifications/{notificationId}', [MemberNotificationController::class, 'destroy']);
 });
 
-require __DIR__.'/auth.php';
+require __DIR__.'/auth.php'; 
