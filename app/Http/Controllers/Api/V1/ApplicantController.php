@@ -93,6 +93,8 @@ class ApplicantController extends Controller
         return new ApplicantResource($applicant);
     }
 
+
+
     /**
      * Update the specified resource in storage.
      */

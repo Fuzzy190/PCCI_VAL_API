@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Api\V1\ApplicantController;
 use App\Models\Applicant;
+use App\Http\Controllers\Auth\OtpPasswordResetController;
 use App\Http\Controllers\Api\V1\MemberController;
 use App\Http\Controllers\Api\V1\MembershipTypeController;
 use App\Http\Controllers\Api\V1\PaymentController;
@@ -44,6 +45,10 @@ Route::get('v1/trustees',[BoardOfTrusteeController::class,'index']);
 //Get ==>> Members (Business)
 // Route::get('v1/business',[MemberController::class,'index']);
 Route::get('v1/business',[BusinessController::class,'index']);
+
+//Post ==>> Forgot password
+Route::post('/forgot-password/send-otp', [OtpPasswordResetController::class, 'sendOtp']);
+Route::post('/forgot-password/reset', [OtpPasswordResetController::class, 'resetWithOtp']);
 
 // Public
 Route::get('v1/products/active', [PublicProductController::class, 'index']);
