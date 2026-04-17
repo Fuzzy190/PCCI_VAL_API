@@ -9,6 +9,8 @@ use App\Notifications\PasswordChangeConfirmationNotification;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
 
 class UserController extends Controller
@@ -92,7 +94,8 @@ class UserController extends Controller
     }
 
     /**
-     * Update user information (name and email only)
+     * Update user information (name, email, and profile image)
+     * PUT or POST /api/v1/user/change-info
      */
     public function changeInfo(Request $request)
     {
@@ -101,15 +104,48 @@ class UserController extends Controller
         $request->validate([
             'name' => ['nullable', 'string', 'max:255'],
             'email' => ['nullable', 'email', 'max:255', 'unique:users,email,' . $user->id],
+            'image' => ['nullable', 'image', 'mimes:jpg,jpeg,png', 'max:5120'], // Max 5MB
         ]);
 
-        // Update only name and email if provided
+        // Update name and email if provided
         if ($request->filled('name')) {
             $user->name = $request->name;
         }
 
         if ($request->filled('email')) {
             $user->email = $request->email;
+        }
+
+        // Handle Image Upload to Backblaze (S3)
+        if ($request->hasFile('image')) {
+            
+            // 1. Remove the old image from the cloud if it exists to save space
+            // NOTE: Assuming your column is named 'profile_photo_path' in the users table. 
+            // If it is named 'photo_path' or 'avatar', change it below.
+            if (!empty($user->profile_photo_path)) {
+                Storage::disk('s3')->delete($user->profile_photo_path);
+            }
+
+            $file = $request->file('image');
+            $extension = $file->getClientOriginalExtension();
+            
+            // Format filename (e.g., image_1715000000.png)
+            $filename = 'image_' . time() . '.' . $extension;
+
+            // 2. Format the folder path: member/{id}.{name}
+            // Use member ID if they are a member, otherwise fallback to their user ID
+            $identifier = $user->member ? $user->member->id : $user->id;
+            
+            // Sanitize the name so there are no spaces or weird characters in the folder URL (e.g., 'jeds-it-work')
+            $sanitizedName = Str::slug($user->name); 
+
+            $folderPath = "member/{$identifier}.{$sanitizedName}";
+
+            // 3. Upload to Backblaze (S3 disk)
+            $path = $file->storeAs($folderPath, $filename, 's3');
+            
+            // 4. Save path to database
+            $user->profile_photo_path = $path; 
         }
 
         $user->save();
