@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -12,25 +11,21 @@ use Illuminate\Support\Facades\Storage;
 
 class User extends Authenticatable
 {
-    /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory, Notifiable, HasRoles, HasApiTokens;
 
     /**
      * The attributes that are mass assignable.
-     *
-     * @var list<string>
      */
     protected $fillable = [
-        'name',
+        'first_name', // Changed
+        'last_name',  // Changed
         'email',
         'password',
-        'profile_photo_path', // Added this line
+        'profile_photo_path',
     ];
 
     /**
      * The attributes that should be hidden for serialization.
-     *
-     * @var list<string>
      */
     protected $hidden = [
         'password',
@@ -39,8 +34,6 @@ class User extends Authenticatable
 
     /**
      * Get the attributes that should be cast.
-     *
-     * @return array<string, string>
      */
     protected function casts(): array
     {
@@ -51,10 +44,11 @@ class User extends Authenticatable
     }
     
     /**
-     * Append the custom profile_photo_url attribute when the model is converted to an array or JSON.
+     * Append custom attributes when the model is converted to an array or JSON.
      */
     protected $appends = [
         'profile_photo_url',
+        'name', // Appends the combined name attribute automatically
     ];
 
     public function member()
@@ -63,8 +57,15 @@ class User extends Authenticatable
     }
     
     /**
+     * Automatically combines first and last name when calling $user->name
+     */
+    public function getNameAttribute()
+    {
+        return trim("{$this->first_name} {$this->last_name}");
+    }
+
+    /**
      * Get the user's profile photo URL from S3.
-     * Generates a temporary URL valid for 60 minutes.
      */
     public function getProfilePhotoUrlAttribute()
     {

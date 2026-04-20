@@ -18,7 +18,6 @@ class UserController extends Controller
     /**
      * Step 1: Request OTP for password change
      * POST /api/user/confirm-password-change
-     * * No body payload needed here. Just an authenticated request.
      */
     public function confirmPasswordChange(Request $request)
     {
@@ -42,7 +41,6 @@ class UserController extends Controller
     /**
      * Step 2: Submit OTP and new password to finalize the change
      * POST /api/user/request-password-change
-     * * Requires JSON Body: otp, new_password, new_password_confirmation
      */
     public function requestPasswordChange(Request $request)
     {
@@ -58,9 +56,7 @@ class UserController extends Controller
         $cachedOtp = Cache::get($otpCacheKey);
 
         if (!$cachedOtp || $cachedOtp !== $request->otp) {
-            return response()->json([
-                'message' => 'Invalid or expired OTP.'
-            ], 422);
+            return response()->json(['message' => 'Invalid or expired OTP.'], 422);
         }
 
         // 3. Now that OTP is confirmed, validate the password fields
@@ -70,9 +66,7 @@ class UserController extends Controller
 
         // 4. Check if new password is the same as current password
         if (Hash::check($request->new_password, $user->password)) {
-            return response()->json([
-                'message' => 'New password cannot be the same as your current password.'
-            ], 422);
+            return response()->json(['message' => 'New password cannot be the same as your current password.'], 422);
         }
 
         // 5. Update password in the database (Hash the new password!)
@@ -94,57 +88,53 @@ class UserController extends Controller
     }
 
     /**
-     * Update user information (name, email, and profile image)
+     * Update user information (first_name, last_name, email, and profile image)
      * PUT or POST /api/v1/user/change-info
      */
     public function changeInfo(Request $request)
     {
         $user = $request->user();
 
+        // 1. Strict Validation: 'sometimes' + 'required' ensures that IF they send the field, it cannot be empty.
         $request->validate([
-            'name' => ['nullable', 'string', 'max:255'],
-            'email' => ['nullable', 'email', 'max:255', 'unique:users,email,' . $user->id],
-            'image' => ['nullable', 'image', 'mimes:jpg,jpeg,png', 'max:5120'], // Max 5MB
+            'first_name' => ['sometimes', 'required', 'string', 'max:255'],
+            'last_name'  => ['sometimes', 'required', 'string', 'max:255'],
+            'email'      => ['sometimes', 'required', 'email', 'max:255', 'unique:users,email,' . $user->id],
+            'image'      => ['nullable', 'image', 'mimes:jpg,jpeg,png', 'max:5120'], 
         ]);
 
-        // Update name and email if provided
-        if ($request->filled('name')) {
-            $user->name = $request->name;
+        // 2. Update fields using $request->has() so it explicitly checks the payload
+        if ($request->has('first_name')) {
+            $user->first_name = $request->first_name;
         }
 
-        if ($request->filled('email')) {
+        if ($request->has('last_name')) {
+            $user->last_name = $request->last_name;
+        }
+
+        if ($request->has('email')) {
             $user->email = $request->email;
         }
 
-        // Handle Image Upload to Backblaze (S3)
+        // 3. Handle Image Upload to Backblaze (S3)
         if ($request->hasFile('image')) {
             
-            // 1. Remove the old image from the cloud if it exists to save space
-            // NOTE: Assuming your column is named 'profile_photo_path' in the users table. 
-            // If it is named 'photo_path' or 'avatar', change it below.
             if (!empty($user->profile_photo_path)) {
                 Storage::disk('s3')->delete($user->profile_photo_path);
             }
 
             $file = $request->file('image');
             $extension = $file->getClientOriginalExtension();
-            
-            // Format filename (e.g., image_1715000000.png)
             $filename = 'image_' . time() . '.' . $extension;
 
-            // 2. Format the folder path: member/{id}.{name}
-            // Use member ID if they are a member, otherwise fallback to their user ID
             $identifier = $user->member ? $user->member->id : $user->id;
             
-            // Sanitize the name so there are no spaces or weird characters in the folder URL (e.g., 'jeds-it-work')
-            $sanitizedName = Str::slug($user->name); 
+            // Sanitize the full name securely
+            $sanitizedName = Str::slug($user->first_name . ' ' . $user->last_name); 
 
             $folderPath = "member/{$identifier}.{$sanitizedName}";
 
-            // 3. Upload to Backblaze (S3 disk)
             $path = $file->storeAs($folderPath, $filename, 's3');
-            
-            // 4. Save path to database
             $user->profile_photo_path = $path; 
         }
 
