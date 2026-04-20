@@ -16,29 +16,6 @@ class UserMemberSeeder extends Seeder
 
         $credentials = [];
 
-        // foreach ($members as $index => $member) {
-
-        //     $email = $member->applicant->email ?? 'user' . $member->id . '@example.com';
-
-        //     // First record uses password123, others random
-        //     $password = $index === 0 ? 'password123' : Str::random(11);
-
-        //     // Create user
-        //     $user = User::create([
-        //         'name' => $member->applicant->registered_business_name,
-        //         'email' => $email,
-        //         'password' => Hash::make($password),
-        //     ]);
-
-        //     $user->assignRole('member');
-
-        //     $member->update([
-        //         'user_id' => $user->id,
-        //     ]);
-
-        //     $credentials[] = "Business: {$user->name} | Email: {$email} | Password: {$password}";
-        // }
-
         foreach ($members as $member) {
 
             $email = $member->applicant->email ?? 'user' . $member->id . '@example.com';
@@ -46,10 +23,12 @@ class UserMemberSeeder extends Seeder
             // Generate consistent password per user
             $password = substr(md5($email), 0, 10);
 
+            // Splitting the name into first_name and last_name using representative data
             $user = User::create([
-                'name' => $member->applicant->registered_business_name,
-                'email' => $email,
-                'password' => Hash::make($password),
+                'first_name' => $member->applicant->rep_first_name ?? $member->applicant->registered_business_name ?? 'Business',
+                'last_name'  => $member->applicant->rep_surname ?? 'Member',
+                'email'      => $email,
+                'password'   => Hash::make($password),
             ]);
 
             $user->assignRole('member');
@@ -58,7 +37,8 @@ class UserMemberSeeder extends Seeder
                 'user_id' => $user->id,
             ]);
 
-            $credentials[] = "Business: {$user->name} | Email: {$email} | Password: {$password}";
+            $businessName = $member->applicant->registered_business_name ?? 'Unknown Business';
+            $credentials[] = "Business: {$businessName} | Rep Name: {$user->name} | Email: {$email} | Password: {$password}";
         }
 
         // Save credentials to file

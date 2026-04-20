@@ -20,7 +20,8 @@ class SuperAdminSeeder extends Seeder
         $superAdmin = User::firstOrCreate(
             ['email' => 'super_admin@pcci.test'],
             [
-                'name' => 'Super Admin',
+                'first_name' => 'Super',
+                'last_name' => 'Admin',
                 'password' => Hash::make('password'),
             ]
         );
@@ -30,7 +31,8 @@ class SuperAdminSeeder extends Seeder
         $admin = User::firstOrCreate(
             ['email' => 'admin2@pcci.test'],
             [
-                'name' => 'Admin User',
+                'first_name' => 'Admin',
+                'last_name' => 'User',
                 'password' => Hash::make('password'),
             ]
         );
@@ -40,7 +42,8 @@ class SuperAdminSeeder extends Seeder
         $treasurer = User::firstOrCreate(
             ['email' => 'treasurer@pcci.test'],
             [
-                'name' => 'Treasurer User',
+                'first_name' => 'Treasurer',
+                'last_name' => 'User',
                 'password' => Hash::make('password'),
             ]
         );
@@ -55,13 +58,12 @@ class SuperAdminSeeder extends Seeder
         $this->command->line('');
 
         $this->command->info('Admin Credentials:');
-        $this->command->line('Email: admin@pcci.test');
+        $this->command->line('Email: admin2@pcci.test');
         $this->command->line('Password: password');
         $this->command->line('');
 
         $this->command->info('Treasurer Credentials:');
         $this->command->line('Email: treasurer@pcci.test');
         $this->command->line('Password: password');
-
     }
 }
