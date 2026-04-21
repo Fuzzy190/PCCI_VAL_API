@@ -16,6 +16,36 @@ use Illuminate\Validation\Rules\Password;
 class UserController extends Controller
 {
     /**
+     * POST /api/v1/user/first-time-password-change
+     * Specialized endpoint ONLY for the forced first-time change.
+     */
+    public function firstTimePasswordChange(Request $request)
+    {
+        $user = $request->user();
+
+        if (!$user->requires_password_change) {
+            return response()->json(['message' => 'Your password has already been updated.'], 400);
+        }
+
+        $request->validate([
+            'new_password' => ['required', 'string', 'confirmed', \Illuminate\Validation\Rules\Password::min(8)->mixedCase()->numbers()],
+        ]);
+
+        if (\Illuminate\Support\Facades\Hash::check($request->new_password, $user->password)) {
+            return response()->json(['message' => 'New password cannot be the same as your current generated password.'], 422);
+        }
+
+        // Update password and lift the restriction
+        $user->password = \Illuminate\Support\Facades\Hash::make($request->new_password);
+        $user->requires_password_change = false; 
+        $user->save();
+
+        return response()->json([
+            'message' => 'Password successfully changed. You can now access the dashboard!'
+        ]);
+    }
+
+    /**
      * Step 1: Request OTP for password change
      * POST /api/user/confirm-password-change
      */

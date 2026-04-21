@@ -16,14 +16,15 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
+    
     ->withMiddleware(function (Middleware $middleware) {
         // Register middleware aliases
         $middleware->alias([
             // 'super_admin' => \App\Http\Middleware\CheckSuperAdmin::class,
-
             'role' => RoleMiddleware::class,
             'permission' => PermissionMiddleware::class,
             'role_or_permission' => RoleOrPermissionMiddleware::class,
+            'enforce.password.change' => \App\Http\Middleware\EnforcePasswordChange::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

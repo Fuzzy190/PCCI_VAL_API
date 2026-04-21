@@ -44,7 +44,7 @@ class MemberController extends Controller
             ], 422);
         }
 
-        // 2. Prevent duplicate member
+        // 2. Prevent duplicate member based on application
         if (Member::where('applicant_id', $request->applicant_id)->exists()) {
             return response()->json([
                 'message' => 'This applicant is already a member.'
@@ -73,13 +73,25 @@ class MemberController extends Controller
         $generatedPassword = null;
         $user = User::where('email', $applicant->email)->first();
 
+        // 5. Prevent database crash if the email is already tied to another member profile
+        if ($user && Member::where('user_id', $user->id)->exists()) {
+            return response()->json([
+                'message' => 'A member account with this email already exists. Please use a unique email.'
+            ], 422);
+        }
+
         if (!$user) {
             $generatedPassword = Str::random(8);
+            
+            // 6. Updated to use first_name, last_name, and the password enforcement flag
             $user = User::create([
-                'name' => $applicant->registered_business_name,
+                'first_name' => $applicant->rep_first_name ?? $applicant->registered_business_name ?? 'Business',
+                'last_name' => $applicant->rep_surname ?? 'Member',
                 'email' => $applicant->email,
                 'password' => Hash::make($generatedPassword),
+                'requires_password_change' => true,
             ]);
+            
             $user->assignRole('member');
 
             // ==================== SEND FULL CREDENTIALS & RECEIPT VIA MAILTRAP ====================

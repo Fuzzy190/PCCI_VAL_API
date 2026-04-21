@@ -25,8 +25,10 @@ class LoginController extends Controller
 
         // return response()->noContent();
         return [
-            'user' => new UserResource($user),
+            'message' => 'Login successful',
             'token' => $token,
+            'user' => new UserResource($user),
+            'requires_password_change' => $user->requires_password_change
         ];
     }
 
