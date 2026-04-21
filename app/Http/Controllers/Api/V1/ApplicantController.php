@@ -49,12 +49,6 @@ class ApplicantController extends Controller
         $data['membership_type'] = null;
 
         // 🚀 SWITCHING TO S3 (BACKBLAZE)
-        
-        // 1. Photo (Was 'public')
-        if ($request->hasFile('photo')) {
-            $data['photo_path'] = $request->file('photo')->store('applicants/photos', 's3');
-        }
-
         // 2. Mayor's Permit (Was 'local')
         if ($request->hasFile('mayors_permit')) {
             $data['mayors_permit_path'] = $request->file('mayors_permit')->store('applicants/documents', 's3');
@@ -200,7 +194,6 @@ class ApplicantController extends Controller
         }
 
         $filePath = match ($type) {
-            'photo' => $applicant->photo_path,
             'mayors_permit' => $applicant->mayors_permit_path,
             'dti_sec' => $applicant->dti_sec_path,
             'proof_of_payment' => $applicant->proof_of_payment_path,

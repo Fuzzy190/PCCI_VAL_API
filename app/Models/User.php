@@ -22,6 +22,7 @@ class User extends Authenticatable
         'email',
         'password',
         'profile_photo_path',
+        'requires_password_change'
     ];
 
     /**
@@ -40,6 +41,7 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'requires_password_change' => 'boolean'
         ];
     }
     
