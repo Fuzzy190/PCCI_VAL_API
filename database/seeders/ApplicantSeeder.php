@@ -120,7 +120,6 @@ public function run(): void
             'type_of_company' => 'Single Proprietorship',
             'number_of_employees' => 0,
             'year_established' => 2000,
-            'photo_path' => 'N/A',
             'mayors_permit_path' => 'N/A',
             'dti_sec_path' => 'N/A',
             'proof_of_payment_path' => 'N/A',
