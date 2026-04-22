@@ -210,18 +210,13 @@ class ApplicantController extends Controller
 
     public function reject(Request $request, Applicant $applicant)
     {
-        // 1. Validate that a rejection reason is provided
-        $request->validate([
-            'rejection_reason' => 'required|string|max:1000'
-        ]);
 
-        // 2. Update the Applicant status
+        // 1. Update the Applicant status
         $applicant->update([
             'status' => 'rejected',
-            'rejection_reason' => $request->rejection_reason // Ensure this column exists in your migration
         ]);
 
-        // 3. Optional: Trigger a rejection email using your existing mail logic
+        // 2. Optional: Trigger a rejection email using your existing mail logic
         // $applicantName = $applicant->rep_first_name . ' ' . $applicant->rep_surname;
         // Mail::send('emails.applicant_rejected', [...], function($message) use ($applicant) { ... });
 
