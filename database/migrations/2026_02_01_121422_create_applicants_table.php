@@ -85,6 +85,9 @@ return new class extends Migration
             // === FOR PCCI-VALENZUELA CITY USE ONLY ===
             $table->string('recommending_approval')->nullable();
             $table->timestamps();
+
+            // === TREASURERS NOTES
+            $table->text('rejection_reason')->nullable()->after('status');
         });
     }
 
