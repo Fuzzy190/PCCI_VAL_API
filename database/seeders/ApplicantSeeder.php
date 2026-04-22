@@ -80,8 +80,6 @@ public function run(): void
             ['The TRND Shop','N/A','Ana Liza Del Moral Angeles','9174014723','TheTrndShop@gmail.com'],
             ['8Con Academy','N/A','Eugene Francisco','9541968332','jimfrancisco07@gmail.com'],
             ['MLJJ Consumer Goods Trading','N/A','Janneth Fermin','9423299585','jannethfermin94@gmail.com'],
-            ['GB & G Provider Enterprise Corp.','N/A','Almario Narvasa','9178219007','gbg.providerenterprise.ph@gmail.com'],
-
     ];
 
     $dataToInsert = [];
