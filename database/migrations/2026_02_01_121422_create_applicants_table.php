@@ -69,7 +69,6 @@ return new class extends Migration
             $table->year('year_established');
 
              // === DOCUMENTS & PHOTO ===  
-            $table->string('photo_path')->nullable();
             $table->string('mayors_permit_path')->nullable();
             $table->string('dti_sec_path')->nullable();
             $table->string('proof_of_payment_path')->nullable();
@@ -85,8 +84,10 @@ return new class extends Migration
             
             // === FOR PCCI-VALENZUELA CITY USE ONLY ===
             $table->string('recommending_approval')->nullable();
-
             $table->timestamps();
+
+            // === TREASURERS NOTES
+            $table->text('rejection_reason')->nullable()->after('status');
         });
     }
 

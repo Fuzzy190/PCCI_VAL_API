@@ -186,6 +186,9 @@ Route::middleware(['auth:sanctum'])->group(function() {
             Route::get('v1/membership-dues/stats', [MembershipDueController::class, 'getStats']);
             Route::get('v1/members/{member}/unpaid-dues', [MembershipDueController::class, 'getMemberUnpaidDues']);
 
+            // Reject an applicant's initial payment
+            Route::patch('v1/payments/{applicant}/reject', [ApplicantController::class, 'reject']);
+
             // READ/WRITE DUES PAYMENTS
             Route::apiResource('v1/dues-payments', DuesPaymentController::class)->only(['index', 'store', 'show']);
             Route::get('v1/dues-payments/by-year', [DuesPaymentController::class, 'getCollectionByYear']);

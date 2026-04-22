@@ -22,7 +22,7 @@ use Carbon\Carbon;
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
-use App\Services\MailtrapApiService;
+use Illuminate\Support\Facades\Mail;
 
 class MemberController extends Controller
 {
@@ -33,7 +33,7 @@ class MemberController extends Controller
         );
     }
 
-    public function store(StoreMemberRequest $request, MailtrapApiService $mailtrap)
+    public function store(StoreMemberRequest $request)
     {
         // 1. Find applicant
         $applicant = Applicant::findOrFail($request->applicant_id);
@@ -51,7 +51,7 @@ class MemberController extends Controller
             ], 422);
         }
 
-        // 3. Get the original payment for this applicant (including who received it)
+        // 3. Get the original payment for this applicant
         $payment = Payment::with('receivedBy')->where('applicant_id', $request->applicant_id)->first();
 
         if (!$payment) {
@@ -63,27 +63,25 @@ class MemberController extends Controller
         // 4. Get membership type from payment
         $membershipType = MembershipType::findOrFail($payment->membership_type_id);
 
-        // Handle induction date (nullable)
+        // Handle induction date
         $inductionDate = $request->induction_date ? Carbon::parse($request->induction_date) : null;
-
-        // Auto-calculate membership_end_date if induction date is set
         $membershipEndDate = $inductionDate ? $inductionDate->copy()->addMonths($membershipType->duration_in_months) : null;
 
-        // Create user account for member (if not exists)
+        // Check if user already exists
         $generatedPassword = null;
         $user = User::where('email', $applicant->email)->first();
 
-        // 5. Prevent database crash if the email is already tied to another member profile
+        // 5. Prevent duplicate member profiles for the same user account
         if ($user && Member::where('user_id', $user->id)->exists()) {
             return response()->json([
-                'message' => 'A member account with this email already exists. Please use a unique email.'
+                'message' => 'A member account with this email already exists.'
             ], 422);
         }
 
         if (!$user) {
             $generatedPassword = Str::random(8);
             
-            // 6. Updated to use first_name, last_name, and the password enforcement flag
+            // 6. Create User with first_name, last_name, and password enforcement
             $user = User::create([
                 'first_name' => $applicant->rep_first_name ?? $applicant->registered_business_name ?? 'Business',
                 'last_name' => $applicant->rep_surname ?? 'Member',
@@ -94,10 +92,10 @@ class MemberController extends Controller
             
             $user->assignRole('member');
 
-            // ==================== SEND FULL CREDENTIALS & RECEIPT VIA MAILTRAP ====================
+            // ==================== SEND EMAIL VIA GMAIL SMTP ====================
             $applicantName = $applicant->rep_first_name . ' ' . $applicant->rep_surname;
             
-            $html = view('emails.member_welcome', [
+            $emailData = [
                 'applicantName' => $applicantName,
                 'email' => $applicant->email,
                 'password' => $generatedPassword,
@@ -107,19 +105,17 @@ class MemberController extends Controller
                 'orNumber' => $payment->or_number ?? 'N/A',
                 'amount' => number_format($payment->amount, 2),
                 'paymentDate' => $payment->payment_date ? Carbon::parse($payment->payment_date)->format('F j, Y') : 'N/A',
-                'receivedBy' => $payment->receivedBy->name ?? 'PCCI Treasurer'
-            ])->render();
+                'receivedBy' => $payment->receivedBy->first_name ?? 'PCCI Treasurer'
+            ];
 
-            $mailtrap->sendMail(
-                $applicant->email,
-                $applicantName,
-                'Welcome to PCCI - Membership & Receipt Details',
-                'Your PCCI member account has been created. Use the credentials provided to log in.',
-                $html
-            );
+            // Using standard Laravel Mail facade for Gmail
+            Mail::send('emails.member_welcome', $emailData, function($message) use ($applicant, $applicantName) {
+                $message->to($applicant->email, $applicantName)
+                        ->subject('Welcome to PCCI - Membership & Account Details');
+            });
         }
 
-        // Now create the member with user_id
+        // 7. Create the member record
         $member = Member::create([
             'applicant_id' => $request->applicant_id,
             'user_id' => $user->id,
@@ -141,7 +137,7 @@ class MemberController extends Controller
         }
 
         return response()->json([
-            'message' => 'Member created successfully',
+            'message' => 'Member created successfully and welcome email sent.',
             'member' => new MemberResource($member),
             'generated_password' => $generatedPassword,
         ], 201);
@@ -284,7 +280,7 @@ class MemberController extends Controller
         $orNumber = 'REQ-' . strtoupper(Str::random(8));
 
         $paymentRequest = DuesPayment::create([
-            'membership_due_id' => $due->id,
+            'membership_due_id' => $due->id,    
             'member_id' => $member->id,
             'submitted_by_user_id' => $user->id,
             'or_number' => $orNumber,

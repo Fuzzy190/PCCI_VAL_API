@@ -23,8 +23,8 @@ class ApplicantController extends Controller
 
         // ROLE-BASED BASE RESTRICTIONS
         if ($user->hasRole('treasurer')) {
-            // Treasurer can only see approved or paid
-            $query->whereIn('status', ['approved', 'paid', 'pending']);
+            // Treasurer can only see approved or paid (Remove Pending)
+            $query->whereIn('status', ['approved', 'paid']);
         } elseif (! $user->hasAnyRole(['super_admin', 'admin'])) {
             return response()->json([
                 'message' => 'Unauthorized.'
@@ -206,5 +206,28 @@ class ApplicantController extends Controller
         }
 
         return Storage::disk('s3')->download($filePath);
+    }
+
+    public function reject(Request $request, Applicant $applicant)
+    {
+        // 1. Validate that a rejection reason is provided
+        $request->validate([
+            'rejection_reason' => 'required|string|max:1000'
+        ]);
+
+        // 2. Update the Applicant status
+        $applicant->update([
+            'status' => 'rejected',
+            'rejection_reason' => $request->rejection_reason // Ensure this column exists in your migration
+        ]);
+
+        // 3. Optional: Trigger a rejection email using your existing mail logic
+        // $applicantName = $applicant->rep_first_name . ' ' . $applicant->rep_surname;
+        // Mail::send('emails.applicant_rejected', [...], function($message) use ($applicant) { ... });
+
+        return response()->json([
+            'message' => 'Applicant has been rejected.',
+            'data' => new ApplicantResource($applicant)
+        ]);
     }
 }

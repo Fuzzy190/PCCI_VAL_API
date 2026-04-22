@@ -34,6 +34,12 @@ class SuperAdminSeeder extends Seeder
                 'first_name' => 'Admin',
                 'last_name' => 'User',
                 'password' => Hash::make('password'),
+            ],
+            ['email' => 'janacol1069@gmail.com'],
+            [
+                'first_name' => 'Jed',
+                'last_name' => 'Torx',
+                'password' => Hash::make('password'),
             ]
         );
         $admin->syncRoles([$adminRole]);
