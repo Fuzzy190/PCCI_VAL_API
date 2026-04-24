@@ -132,53 +132,35 @@ class ApplicantController extends Controller
             $oldStatus = $applicant->status;
 
             // Set approval date once
-            if (
-                isset($data['status']) &&
-                $data['status'] === 'approved' &&
-                $applicant->date_approved === null
-            ) {
-                $data['date_approved'] = now();
-            }
-
-            $applicant->update($data);
-
             // ==================== NOTIFICATION FLOW ====================
             if (isset($data['status']) && $oldStatus !== $data['status']) {
-                $subject = '';
-                $messageText = '';
-                $isWarning = false;
-                $sendEmail = false;
-
                 $applicantName = $applicant->rep_first_name . ' ' . $applicant->rep_surname;
 
-                if ($data['status'] === 'approved') {
-                    $subject = 'PCCI - Application Approved';
-                    $messageText = 'Your application forms and documents have been approved by the administration. Our treasurer is now verifying your proof of payment. We will notify you once the payment is confirmed.';
-                    $sendEmail = true;
-                } elseif ($data['status'] === 'rejected') {
-                    $subject = 'PCCI - Application Rejected';
-                    $messageText = 'We regret to inform you that your application was rejected due to invalid forms or proof of payment. Please contact our support team for further instructions.';
-                    $isWarning = true;
-                    $sendEmail = true;
-                } elseif ($data['status'] === 'paid') {
-                    $subject = 'PCCI - Payment Verified';
-                    $messageText = 'Your payment has been successfully verified by our treasurer. The administration will now create your official member account and send you the login credentials shortly.';
-                    $sendEmail = true;
-                }
+                try {
+                    if ($data['status'] === 'approved') {
+                        
+                        // Uses the specific "Approved" template
+                        Mail::send('emails.applicant_approved', ['applicant' => $applicant], function($message) use ($applicant, $applicantName) {
+                            $message->to($applicant->email, $applicantName)
+                                    ->subject('Action Required: PCCI Valenzuela Application Approved');
+                        });
 
-                if ($sendEmail) {
-                    $html = view('emails.applicant_status', [
-                        'applicantName' => $applicantName,
-                        'status' => ucfirst($data['status']),
-                        'messageText' => $messageText,
-                        'isWarning' => $isWarning
-                    ])->render();
+                    } elseif ($data['status'] === 'paid') {
+                        
+                        // Uses the specific "Paid" template
+                        Mail::send('emails.applicant_approved_paid', ['applicant' => $applicant], function($message) use ($applicant, $applicantName) {
+                            $message->to($applicant->email, $applicantName)
+                                    ->subject('Update: PCCI Valenzuela Payment Verified');
+                        });
 
-                    // Since you're switching to standard Mail for everything, you should probably change this MailtrapApiService call later to match standard Mail::send() too.
-                    $mailtrap->sendMail($applicant->email, $applicantName, $subject, $messageText, $html);
+                    }
+                    // NOTE: 'rejected' is completely removed from here because 
+                    // it is securely handled by your dedicated reject() method!
+                    
+                } catch (\Exception $e) {
+                    \Log::error('Failed to send status update email: ' . $e->getMessage());
                 }
             }
-
             return new ApplicantResource($applicant);
         }
 
@@ -221,7 +203,7 @@ class ApplicantController extends Controller
         return Storage::disk('s3')->download($filePath);
     }
 
-    public function reject(Request $request, Applicant $applicant)
+   public function reject(Request $request, Applicant $applicant)
     {
         // 1. Validate that a rejection reason is provided
         $request->validate([
@@ -233,12 +215,30 @@ class ApplicantController extends Controller
             'status' => 'rejected',
         ]);
 
-        // 3. Optional: Trigger a rejection email using your existing mail logic
-        // $applicantName = $applicant->rep_first_name . ' ' . $applicant->rep_surname;
-        // Mail::send('emails.applicant_rejected', [...], function($message) use ($applicant) { ... });
+        // 3. Send the Rejection Email via Gmail SMTP
+        $applicantName = $applicant->rep_first_name . ' ' . $applicant->rep_surname;
+        $rejectionReason = $request->rejection_reason;
+
+        $emailData = [
+            'applicantName' => $applicantName,
+            'status' => 'Rejected',
+            // THIS is the fix: Make it a hardcoded string, NOT a variable
+            'messageText' => "We regret to inform you that your application or payment has been rejected. Please review the specific reason below and contact our administration for further instructions.",
+            'rejectionReason' => $rejectionReason, 
+            'isWarning' => true 
+        ];
+
+        try {
+            Mail::send('emails.applicant_status', $emailData, function($message) use ($applicant, $applicantName) {
+                $message->to($applicant->email, $applicantName)
+                        ->subject('Action Required: PCCI Valenzuela Application Rejected'); 
+            });
+        } catch (\Exception $e) {
+            \Log::error('Failed to send applicant rejection email: ' . $e->getMessage());
+        }
 
         return response()->json([
-            'message' => 'Applicant has been rejected.',
+            'message' => 'Applicant has been rejected and notified via email.',
             'data' => new ApplicantResource($applicant)
         ]);
     }
