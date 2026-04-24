@@ -9,6 +9,7 @@ use App\Models\Applicant;
 use App\Http\Resources\ApplicantResource;
 use Illuminate\Support\Facades\Storage;
 use App\Services\MailtrapApiService;
+use Illuminate\Support\Facades\Mail; // <--- THIS IS THE MISSING IMPORT THAT FIXES THE ERROR
 
 class ApplicantController extends Controller
 {
@@ -173,6 +174,7 @@ class ApplicantController extends Controller
                         'isWarning' => $isWarning
                     ])->render();
 
+                    // Since you're switching to standard Mail for everything, you should probably change this MailtrapApiService call later to match standard Mail::send() too.
                     $mailtrap->sendMail($applicant->email, $applicantName, $subject, $messageText, $html);
                 }
             }
