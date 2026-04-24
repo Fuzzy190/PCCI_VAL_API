@@ -13,15 +13,16 @@ class EmailOtpVerificationController extends Controller
 {
     public function sendOtp(Request $request)
     {
-        // Require the frontend to send the email address
+        // 1. Removed 'exists:users,email' so new emails can receive an OTP
         $request->validate([
-            'email' => 'required|email|exists:users,email'
+            'email' => 'required|email'
         ]);
 
-        // Find the user by the provided email
+        // Find the user if they exist
         $user = User::where('email', $request->email)->first();
 
-        if ($user->hasVerifiedEmail()) {
+        // 2. Added a safety check: Only check for verification IF the user exists
+        if ($user && $user->hasVerifiedEmail()) {
             return response()->json(['message' => 'Email is already verified.'], 400);
         }
 
@@ -30,7 +31,7 @@ class EmailOtpVerificationController extends Controller
 
         // Save or update the OTP for this email
         EmailOtp::updateOrCreate(
-            ['email' => $user->email],
+            ['email' => $request->email], // 3. Changed from $user->email to $request->email
             [
                 'otp' => $otp,
                 'expires_at' => Carbon::now()->addMinutes(10)
@@ -40,8 +41,9 @@ class EmailOtpVerificationController extends Controller
         // Send Email using Gmail SMTP and the custom Blade template
         $emailData = ['otp' => $otp];
         
-        Mail::send('emails.verify_email_otp', $emailData, function($message) use ($user) {
-            $message->to($user->email)
+        Mail::send('emails.verify_email_otp', $emailData, function($message) use ($request) {
+            // 4. Changed from $user->email to $request->email
+            $message->to($request->email)
                     ->subject('PCCI Valenzuela - Your Verification Code');
         });
 
@@ -52,15 +54,15 @@ class EmailOtpVerificationController extends Controller
 
     public function verifyOtp(Request $request)
     {
-        // Require BOTH the email and the 6-digit OTP from the frontend
+        // 5. Removed 'exists' rule here as well
         $request->validate([
-            'email' => 'required|email|exists:users,email',
+            'email' => 'required|email',
             'otp' => ['required', 'string', 'size:6']
         ]);
 
         $user = User::where('email', $request->email)->first();
 
-        if ($user->hasVerifiedEmail()) {
+        if ($user && $user->hasVerifiedEmail()) {
             return response()->json(['message' => 'Email is already verified.'], 400);
         }
 
@@ -79,8 +81,12 @@ class EmailOtpVerificationController extends Controller
             return response()->json(['message' => 'Verification code has expired. Please request a new one.'], 400);
         }
 
-        // Success! Mark email as verified and clean up the database
-        $user->markEmailAsVerified();
+        // 6. Only attempt to update the database IF the user account exists
+        if ($user) {
+            $user->markEmailAsVerified();
+        }
+        
+        // Clean up the OTP
         $otpRecord->delete();
 
         return response()->json([

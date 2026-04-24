@@ -8,8 +8,8 @@
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;500;700&family=Poppins:wght@500;600;700&display=swap');
         
         body { font-family: 'DM Sans', Tahoma, sans-serif; line-height: 1.6; color: #334155; background-color: #f8fafc; margin: 0; padding: 0; }
-        .container { max-width: 600px; margin: 40px auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
-        .header { background-color: #1e3a8a; color: #ffffff; padding: 30px 20px; text-align: center; }
+        .container { max-width: 600px; margin: 40px auto; background: #FFFFFF; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        .header { background-color: #A50034; color: #FFFFFF; padding: 30px 20px; text-align: center; }
         .header h1 { font-family: 'Poppins', sans-serif; margin: 0; font-size: 24px; font-weight: 600; }
         .content { padding: 30px 40px; }
         .content h2 { font-family: 'Poppins', sans-serif; color: #0f172a; font-size: 20px; margin-top: 0; }
@@ -17,14 +17,14 @@
         .info-box {
             background-color: #f8fafc;
             border: 1px solid #e2e8f0;
-            border-left: 4px solid #2563eb;
+            border-left: 4px solid #D50032;
             padding: 20px;
             margin: 20px 0;
             border-radius: 4px;
         }
         .info-box h3 {
             font-family: 'Poppins', sans-serif;
-            color: #1e3a8a;
+            color: #A50034;
             margin-top: 0;
             font-size: 16px;
             border-bottom: 1px solid #e2e8f0;
@@ -34,18 +34,18 @@
         .info-box strong { color: #475569; font-weight: 600; display: inline-block; width: 140px; }
         
         .credentials-box {
-            background-color: #eff6ff;
-            border: 2px dashed #2563eb;
+            background-color: #F7C6C7;
+            border: 2px dashed #D50032;
             padding: 20px;
             margin: 25px 0;
             border-radius: 8px;
         }
         .credentials-box p { margin: 8px 0; font-size: 16px; color: #1a202c; }
-        .credentials-box strong { color: #1e3a8a; font-family: 'Poppins', sans-serif; }
+        .credentials-box strong { color: #A50034; font-family: 'Poppins', sans-serif; }
         
         .warning-text { font-size: 13px; color: #ef4444; margin-top: 15px; font-weight: 500; }
         .button-container { text-align: center; margin: 35px 0; }
-        .button { display: inline-block; background-color: #2563eb; color: #ffffff; text-decoration: none; padding: 12px 30px; border-radius: 6px; font-family: 'Poppins', sans-serif; font-weight: 600; }
+        .button { display: inline-block; background-color: #D50032; color: #FFFFFF; text-decoration: none; padding: 12px 30px; border-radius: 6px; font-family: 'Poppins', sans-serif; font-weight: 600; }
         .footer { background-color: #f1f5f9; padding: 20px; text-align: center; font-size: 13px; color: #64748b; border-top: 1px solid #e2e8f0; }
     </style>
 </head>
@@ -76,7 +76,7 @@
             </div>
 
             <div class="credentials-box">
-                <p style="margin-top: 0; margin-bottom: 15px; font-weight: 600; color: #1e3a8a;">Your Portal Login Credentials:</p>
+                <p style="margin-top: 0; margin-bottom: 15px; font-weight: 600; color: #A50034;">Your Portal Login Credentials:</p>
                 <p><strong>Email Address:</strong> {{ $email }}</p>
                 <p><strong>Password:</strong> {{ $password }}</p>
                 <p class="warning-text">For security reasons, we strongly recommend changing this password immediately after your first login.</p>

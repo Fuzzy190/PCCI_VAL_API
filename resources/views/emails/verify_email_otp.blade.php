@@ -8,16 +8,16 @@
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Poppins:wght@500;600;700&display=swap');
         
         body { font-family: 'DM Sans', Tahoma, sans-serif; line-height: 1.6; color: #334155; background-color: #f8fafc; margin: 0; padding: 0; }
-        .container { max-width: 600px; margin: 40px auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
-        .header { background-color: #1e3a8a; color: #ffffff; padding: 30px 20px; text-align: center; }
+        .container { max-width: 600px; margin: 40px auto; background: #FFFFFF; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        .header { background-color: #A50034; color: #FFFFFF; padding: 30px 20px; text-align: center; }
         .header h1 { font-family: 'Poppins', sans-serif; margin: 0; font-size: 24px; font-weight: 600; }
         .content { padding: 30px 40px; text-align: center; }
         .content h2 { font-family: 'Poppins', sans-serif; color: #0f172a; font-size: 20px; margin-top: 0; }
         
         .otp-box {
-            background-color: #eff6ff;
-            border: 2px dashed #2563eb;
-            color: #1e3a8a;
+            background-color: #F7C6C7;
+            border: 2px dashed #D50032;
+            color: #A50034;
             font-family: 'Poppins', sans-serif;
             font-size: 32px;
             font-weight: 700;

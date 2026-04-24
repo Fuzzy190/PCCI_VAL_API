@@ -41,7 +41,7 @@ class ApplicantController extends Controller
 
     public function store(StoreApplicantRequest $request)
     {
-        $data = $request->validated();
+       $data = $request->validated();
 
         // Server-controlled fields
         $data['date_submitted'] = now();
@@ -49,22 +49,33 @@ class ApplicantController extends Controller
         $data['membership_type'] = null;
 
         // 🚀 SWITCHING TO S3 (BACKBLAZE)
-        // 2. Mayor's Permit (Was 'local')
         if ($request->hasFile('mayors_permit')) {
             $data['mayors_permit_path'] = $request->file('mayors_permit')->store('applicants/documents', 's3');
         }
 
-        // 3. DTI/SEC (Was 'local')
         if ($request->hasFile('dti_sec')) {
             $data['dti_sec_path'] = $request->file('dti_sec')->store('applicants/documents', 's3');
         }
 
-        // 4. Proof of Payment (Was 'local')
         if ($request->hasFile('proof_of_payment')) {
             $data['proof_of_payment_path'] = $request->file('proof_of_payment')->store('applicants/documents', 's3');
         }
 
         $applicant = Applicant::create($data);
+
+        // ==================== SEND WELCOME EMAIL ====================
+        $applicantName = $applicant->rep_first_name . ' ' . $applicant->rep_surname;
+        
+        try {
+            Mail::send('emails.applicant_welcome', ['applicantName' => $applicantName], function($message) use ($applicant, $applicantName) {
+                $message->to($applicant->email, $applicantName)
+                        ->subject('Application Received - PCCI Valenzuela');
+            });
+        } catch (\Exception $e) {
+            // Log the error so it doesn't crash the applicant submission if Gmail SMTP fails
+            \Log::error('Failed to send applicant welcome email: ' . $e->getMessage());
+        }
+        // ============================================================
 
         return new ApplicantResource($applicant);
     }
