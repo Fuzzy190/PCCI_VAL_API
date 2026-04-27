@@ -104,23 +104,26 @@ class ApplicantController extends Controller
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, Applicant $applicant, MailtrapApiService $mailtrap)
+    public function update(Request $request, $id, MailtrapApiService $mailtrap)
     {   
         $user = $request->user();
 
-        /**
-         * ADMIN / SUPER_ADMIN / TREASURER
-         * - Admins can approve/reject and set membership type
-         * - Treasurers can verify payment (change status to paid)
-         */
+        // 1. Manually fetch the applicant by ID to fix the route binding mismatch
+        $applicant = \App\Models\Applicant::find($id);
+
+        if (!$applicant) {
+            return response()->json(['message' => 'Applicant not found in database.'], 404);
+        }
+
         if ($user->hasAnyRole(['super_admin', 'admin', 'treasurer'])) {
 
             $data = $request->validate([
                 'status' => 'required|in:pending,approved,rejected,paid',
-                'membership_type' => 'nullable|in:Charter,Life,Regular,Local Chamber,Trade/Industry Association,Affiliate',
+                // 2. Relaxed validation so it accepts frontend options like 'Associate' and 'Chapter'
+                'membership_type' => 'nullable|string', 
             ]);
 
-            // Ensure Treasurer can ONLY update the status to paid, and ONLY if it's already approved
+            // Ensure Treasurer can ONLY update the status to paid
             if ($user->hasRole('treasurer') && !$user->hasAnyRole(['super_admin', 'admin'])) {
                 if ($applicant->status !== 'approved' || $data['status'] !== 'paid') {
                     return response()->json([
@@ -131,42 +134,43 @@ class ApplicantController extends Controller
 
             $oldStatus = $applicant->status;
 
-            // Set approval date once
+            // 3. ACTUALLY UPDATE AND SAVE TO THE DATABASE
+            $applicant->status = $data['status'];
+            
+            if (isset($data['membership_type'])) {
+                $applicant->membership_type = $data['membership_type'];
+            }
+            
+            $applicant->save(); // This commits the change to MySQL!
+
             // ==================== NOTIFICATION FLOW ====================
             if (isset($data['status']) && $oldStatus !== $data['status']) {
                 $applicantName = $applicant->rep_first_name . ' ' . $applicant->rep_surname;
 
                 try {
                     if ($data['status'] === 'approved') {
-                        
-                        // Uses the specific "Approved" template
-                        Mail::send('emails.applicant_approved', ['applicant' => $applicant], function($message) use ($applicant, $applicantName) {
+                        \Mail::send('emails.applicant_approved', ['applicant' => $applicant], function($message) use ($applicant, $applicantName) {
                             $message->to($applicant->email, $applicantName)
                                     ->subject('Action Required: PCCI Valenzuela Application Approved');
                         });
-
                     } elseif ($data['status'] === 'paid') {
-                        
-                        // Uses the specific "Paid" template
-                        Mail::send('emails.applicant_approved_paid', ['applicant' => $applicant], function($message) use ($applicant, $applicantName) {
+                        \Mail::send('emails.applicant_approved_paid', ['applicant' => $applicant], function($message) use ($applicant, $applicantName) {
                             $message->to($applicant->email, $applicantName)
                                     ->subject('Update: PCCI Valenzuela Payment Verified');
                         });
-
                     }
-                    // NOTE: 'rejected' is completely removed from here because 
-                    // it is securely handled by your dedicated reject() method!
-                    
                 } catch (\Exception $e) {
                     \Log::error('Failed to send status update email: ' . $e->getMessage());
                 }
             }
-            return new ApplicantResource($applicant);
+            
+            // Return success to the frontend
+            return response()->json([
+                'message' => 'Status updated successfully!',
+                'data' => $applicant
+            ], 200);
         }
 
-        /**
-         * DEFAULT: DENY
-         */
         return response()->json([
             'message' => 'Unauthorized action.'
         ], 403);
