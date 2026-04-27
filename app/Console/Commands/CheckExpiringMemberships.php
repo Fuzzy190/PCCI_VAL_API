@@ -4,131 +4,81 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use App\Models\Member;
-use App\Models\MembershipDue;
-use App\Models\ExpiringMembershipNotification;
-use App\Services\MailtrapApiService;
+use Illuminate\Support\Facades\Mail;
 use Carbon\Carbon;
 
 class CheckExpiringMemberships extends Command
 {
-    /**
-     * The name and signature of the console command.
-     *
-     * @var string
-     */
-    protected $signature = 'check:expiring-memberships';
+    // The command you will type in terminal to run this
+    protected $signature = 'memberships:check-expiring';
+    protected $description = 'Check for expiring memberships and send emails via Gmail SMTP';
 
-    /**
-     * The console command description.
-     *
-     * @var string
-     */
-    protected $description = 'Create expiring membership notifications for members whose membership_end_date is 1, 2, or 3 months away, or already expired.';
-
-    protected MailtrapApiService $mailtrap;
-
-    public function __construct(MailtrapApiService $mailtrap)
-    {
-        parent::__construct();
-        $this->mailtrap = $mailtrap;
-    }
-
-    /**
-     * Execute the console command.
-     */
     public function handle()
     {
-        $now = Carbon::now(config('app.timezone', 'UTC'));
+        $now = Carbon::now();
+        
+        // Find all active members who have an expiration date
+        $members = Member::with('user')->whereNotNull('membership_end_date')->where('status', 'active')->get();
 
-        $this->info("Checking at {$now}");
+        $emailsSent = 0;
 
-        // Check for future expiries (1-3 months ahead)
-        $futureMembers = Member::whereNotNull('membership_end_date')
-            ->whereDate('membership_end_date', '>=', $now->toDateString())
-            ->whereDate('membership_end_date', '<=', $now->copy()->addMonths(3)->toDateString())
-            ->with(['user', 'applicant'])
-            ->get();
+        foreach ($members as $member) {
+            $endDate = Carbon::parse($member->membership_end_date);
+            $user = $member->user;
 
-        $this->info("Found {$futureMembers->count()} future expiring members");
+            // Skip if no user is attached
+            if (!$user) continue;
 
-        foreach ($futureMembers as $member) {
-            $monthsUntil = (int) round($now->diffInMonths($member->membership_end_date, false));
+            $sendEmail = false;
+            $isExpired = false;
+            $monthsUntil = 0;
 
-            if (! in_array($monthsUntil, [3, 2, 1], true)) {
-                continue;
+            // CONDITION 1: Expiring in exactly 1 Month
+            if ($now->isSameDay($endDate->copy()->subMonth())) {
+                 $sendEmail = true;
+                 $isExpired = false;
+                 $monthsUntil = 1;
+            } 
+            // CONDITION 2: Expiring Today or Already Past
+            elseif ($now->greaterThanOrEqualTo($endDate)) {
+                 $sendEmail = true;
+                 $isExpired = true;
+                 
+                 // Update their status to expired in the database
+                 $member->update(['status' => 'expired']);
             }
 
-            $message = "Membership will expire in {$monthsUntil} month(s) on {$member->membership_end_date}";
-            $subject = "Membership Expiry Notice";
-            
-            $html = view('emails.membership_expiry', [
-                'memberName' => $member->user?->name ?? $member->applicant?->registered_business_name ?? 'Member',
-                'expiryDate' => Carbon::parse($member->membership_end_date)->format('F j, Y'),
-                'isExpired' => false,
-                'monthsUntil' => $monthsUntil,
-            ])->render();
+            // ==================== SEND GMAIL SMTP EMAIL ====================
+            if ($sendEmail) {
+                $memberName = $user->first_name . ' ' . $user->last_name;
+                
+                $emailData = [
+                    'memberName' => $memberName,
+                    'isExpired' => $isExpired,
+                    'expiryDate' => $endDate->format('F j, Y'),
+                    'monthsUntil' => $monthsUntil
+                ];
 
-            $this->createNotificationIfMissing($member, $message, $subject, false, $html);
+                try {
+                    Mail::send('emails.membership_expiry', $emailData, function($message) use ($user, $memberName, $isExpired) {
+                        $subject = $isExpired 
+                            ? 'Action Required: PCCI Membership Expired' 
+                            : 'Reminder: PCCI Membership Expiring Soon';
+                            
+                        $message->to($user->email, $memberName)
+                                ->subject($subject);
+                    });
+                    
+                    $emailsSent++;
+                    $this->info("Expiry email sent successfully to: {$user->email}");
+                    
+                } catch (\Exception $e) {
+                    \Log::error("Failed to send expiry email to {$user->email}: " . $e->getMessage());
+                    $this->error("Failed to send email to: {$user->email}");
+                }
+            }
         }
-
-        // Check for already expired memberships
-        $expiredMembers = Member::whereNotNull('membership_end_date')
-            ->whereDate('membership_end_date', '<', $now->toDateString())
-            ->with(['user', 'applicant'])
-            ->get();
-
-        $this->info("Found {$expiredMembers->count()} expired members");
-
-        foreach ($expiredMembers as $member) {
-            MembershipDue::ensureExpiredDueForMember($member);
-
-            $message = "Membership expired on {$member->membership_end_date}";
-            $subject = "Membership Expired";
-
-            $html = view('emails.membership_expiry', [
-                'memberName' => $member->user?->name ?? $member->applicant?->registered_business_name ?? 'Member',
-                'expiryDate' => Carbon::parse($member->membership_end_date)->format('F j, Y'),
-                'isExpired' => true,
-                'monthsUntil' => 0,
-            ])->render();
-
-            $this->createNotificationIfMissing($member, $message, $subject, true, $html);
-        }
-    }
-
-    protected function createNotificationIfMissing(Member $member, string $message, string $subject, bool $isExpired = false, ?string $html = null): void
-    {
-        $existing = ExpiringMembershipNotification::where('member_id', $member->id)
-            ->where('message', $message)
-            ->exists();
-
-        if ($existing) {
-            return;
-        }
-
-        if ($isExpired) {
-            ExpiringMembershipNotification::where('member_id', $member->id)
-                ->where('message', 'like', 'Membership expired%')
-                ->delete();
-        }
-
-        $notification = ExpiringMembershipNotification::create([
-            'member_id' => $member->id,
-            'message' => $message,
-        ]);
-
-        $this->sendEmailNotification($member, $subject, $message, $html);
-    }
-
-    protected function sendEmailNotification(Member $member, string $subject, string $body, ?string $html = null): void
-    {
-        $toEmail = $member->user?->email ?? $member->applicant?->email;
-        $toName = $member->user?->name ?? $member->applicant?->registered_business_name ?? 'Member';
-
-        if (!$toEmail) {
-            return;
-        }
-
-        $this->mailtrap->sendMail($toEmail, $toName, $subject, $body, $html);
+        
+        $this->info("Membership check complete. Total emails sent: {$emailsSent}");
     }
 }

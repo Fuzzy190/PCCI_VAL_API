@@ -129,6 +129,9 @@ Route::middleware(['auth:sanctum'])->group(function() {
             Route::post('/user/request-password-change', [UserController::class, 'requestPasswordChange']); 
         });
 
+        // API Endpoint to trigger the daily membership expiry check
+        Route::post('/v1/members/trigger-expiry-check', [\App\Http\Controllers\Api\V1\MemberController::class, 'triggerExpiryCheck']);
+
         // ---------------------------------------------------------------------
         // SUPER ADMIN & ADMIN - MANAGE USERS, MEMBERSHIP TYPES, BOARD, ETC.
         // ---------------------------------------------------------------------

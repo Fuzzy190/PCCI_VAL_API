@@ -23,6 +23,7 @@ use App\Models\User;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Artisan;
 
 class MemberController extends Controller
 {
@@ -236,6 +237,10 @@ class MemberController extends Controller
         ]);
     }
 
+    //This code is used by members to submit their payment requests 
+    //for their membership dues. They can optionally upload a receipt 
+    //image and provide a reference number for online payments. 
+    //The request will be saved with a pending review status for the admin to verify and approve.
     public function requestPayment(Request $request)
     {
         $user = Auth::user();
@@ -297,5 +302,24 @@ class MemberController extends Controller
             'message' => 'Payment request submitted',
             'payment_request' => new DuesPaymentResource($paymentRequest->load(['membershipDue', 'member', 'submittedBy'])),
         ], 201);
+    }
+
+    //This code works and is used to trigger the expiry check from the 
+    //frontend or Postman without needing to access the terminal. It runs 
+    //the same logic as the CheckExpiringMemberships command and returns
+    //the output for verification.
+    public function triggerExpiryCheck(Request $request)
+    {
+        // 1. Run the terminal command programmatically
+        Artisan::call('memberships:check-expiring');
+
+        // 2. Get the text that would normally print in the terminal
+        $output = Artisan::output();
+
+        // 3. Return it to the frontend / Postman
+        return response()->json([
+            'message' => 'Expiry check executed successfully.',
+            'terminal_output' => trim($output)
+        ], 200);
     }
 }
