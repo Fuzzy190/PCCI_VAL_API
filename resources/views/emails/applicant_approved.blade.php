@@ -25,7 +25,7 @@
         </div>
         <div class="content">
             <h2>Application Notification</h2>
-            <p class="greeting">Welcome, {{ $applicant->first_name }}!</p>
+            <p class="greeting">Welcome, {{ $applicantName }}!</p>
             
             <p>Thank you for your interest in joining <strong>PCCI Valenzuela</strong>. We are pleased to inform you that your application has been <strong style="color: #D50032;">approved</strong>.</p>
             <p>Congratulations on reaching this stage! We are excited to move forward with you.</p>
