@@ -101,25 +101,25 @@ class ApplicantController extends Controller
 
 
 
-    /**
-     * Update the specified resource in storage.
-     */
     public function update(Request $request, $id, MailtrapApiService $mailtrap)
     {   
         $user = $request->user();
 
-        // 1. Manually fetch the applicant by ID to fix the route binding mismatch
+        // 1. FIX: Manually find the applicant by ID to bypass route binding errors
         $applicant = \App\Models\Applicant::find($id);
 
         if (!$applicant) {
-            return response()->json(['message' => 'Applicant not found in database.'], 404);
+            return response()->json(['message' => 'Applicant not found.'], 404);
         }
 
+        /**
+         * ADMIN / SUPER_ADMIN / TREASURER
+         */
         if ($user->hasAnyRole(['super_admin', 'admin', 'treasurer'])) {
 
             $data = $request->validate([
                 'status' => 'required|in:pending,approved,rejected,paid',
-                // 2. Relaxed validation so it accepts frontend options like 'Associate' and 'Chapter'
+                // 2. FIX: Allow string values to match frontend options like 'Associate'
                 'membership_type' => 'nullable|string', 
             ]);
 
@@ -134,14 +134,18 @@ class ApplicantController extends Controller
 
             $oldStatus = $applicant->status;
 
-            // 3. ACTUALLY UPDATE AND SAVE TO THE DATABASE
+            // ==========================================================
+            // 3. FIX: UPDATE THE DATA AND COMMIT TO DATABASE
+            // ==========================================================
             $applicant->status = $data['status'];
             
             if (isset($data['membership_type'])) {
                 $applicant->membership_type = $data['membership_type'];
             }
             
-            $applicant->save(); // This commits the change to MySQL!
+            // Save the changes to the database
+            $applicant->save(); 
+            // ==========================================================
 
             // ==================== NOTIFICATION FLOW ====================
             if (isset($data['status']) && $oldStatus !== $data['status']) {
@@ -164,16 +168,14 @@ class ApplicantController extends Controller
                 }
             }
             
-            // Return success to the frontend
+            // Return actual updated data to the frontend
             return response()->json([
-                'message' => 'Status updated successfully!',
+                'message' => 'Applicant updated successfully',
                 'data' => $applicant
             ], 200);
         }
 
-        return response()->json([
-            'message' => 'Unauthorized action.'
-        ], 403);
+        return response()->json(['message' => 'Unauthorized action.'], 403);
     }
 
     /**
