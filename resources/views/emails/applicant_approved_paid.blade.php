@@ -25,7 +25,7 @@
         </div>
         <div class="content">
             <h2>Payment Verified</h2>
-            <p class="greeting">Hello {{ $applicant->first_name }},</p>
+            <p class="greeting">Hello {{ $applicantName }},</p>
             
             <p>We have successfully received your <strong>application</strong> and <strong>payment</strong>.</p>
             <p>Thank you for completing the required steps. Your submission is now being processed.</p>
