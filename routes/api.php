@@ -69,36 +69,6 @@ Route::post('v1/upload', [FileUploadController::class, 'upload']);
 Route::get('/v1/notifications', [ExpiringMembershipNotificationController::class, 'index']);
 Route::patch('/v1/notifications/{id}/read', [ExpiringMembershipNotificationController::class, 'markAsRead']);
 
-// DEV-ONLY: Refresh DB (Super Admin Only)
-Route::get('/refresh-db', function () {
-    try {
-        Log::info('Refresh DB started');
-
-        Schema::disableForeignKeyConstraints();
-
-        Artisan::call('migrate:fresh', [
-            '--force' => true,
-            '--seed' => true
-        ]);
-
-        Schema::enableForeignKeyConstraints();
-
-        return response()->json([
-            'status' => 'success',
-            'output' => Artisan::output()
-        ]);
-
-    } catch (\Throwable $e) {
-        Log::error('Refresh DB failed: ' . $e->getMessage());
-
-        return response()->json([
-            'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString()
-        ], 500);
-    }
-});
-
-
 // =========================================================================
 // AUTHENTICATED ROUTES
 // =========================================================================
@@ -221,6 +191,35 @@ Route::middleware(['auth:sanctum'])->group(function() {
             //Delete ==>> Users 
             Route::delete('v1/trustees/{boardOfTrustee}',[BoardOfTrusteeController::class,'destroy']);
             Route::delete('v1/positions/{boardPosition}',[BoardPositionController::class,'destroy']);
+
+            // DEV-ONLY: Refresh DB (Super Admin Only)
+            Route::get('/refresh-db', function () {
+                try {
+                    Log::info('Refresh DB started');
+
+                    Schema::disableForeignKeyConstraints();
+
+                    Artisan::call('migrate:fresh', [
+                        '--force' => true,
+                        '--seed' => true
+                    ]);
+
+                    Schema::enableForeignKeyConstraints();
+
+                    return response()->json([
+                        'status' => 'success',
+                        'output' => Artisan::output()
+                    ]);
+
+                } catch (\Throwable $e) {
+                    Log::error('Refresh DB failed: ' . $e->getMessage());
+
+                    return response()->json([
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString()
+                    ], 500);
+                }
+            });
         });
 
         // ---------------------------------------------------------------------

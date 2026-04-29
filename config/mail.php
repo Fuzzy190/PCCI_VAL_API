@@ -86,6 +86,13 @@ return [
             'transport' => 'resend',
         ],
 
+        'mailers' => [
+        // ... existing mailers like smtp, log, etc.
+
+        'brevo' => [
+            'transport' => 'brevo',
+        ],
+    ],
     ],
 
     /*

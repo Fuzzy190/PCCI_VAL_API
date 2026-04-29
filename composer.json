@@ -13,7 +13,8 @@
         "league/flysystem-aws-s3-v3": "3.0",
         "railsware/mailtrap-php": "^3.11",
         "resend/resend-php": "*",
-        "spatie/laravel-permission": "^6.24"
+        "spatie/laravel-permission": "^6.24",
+        "symfony/brevo-mailer": "^7.4"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
