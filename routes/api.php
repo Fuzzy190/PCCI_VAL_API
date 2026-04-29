@@ -27,6 +27,7 @@ use App\Http\Controllers\Api\V1\ProductController;
 use App\Http\Controllers\Api\V1\PublicProductController;
 use App\Http\Controllers\Api\V1\UserController;
 use App\Http\Controllers\Api\V1\FileUploadController;
+use App\Http\Controllers\Api\V1\SystemController;
 
 // Auth Controllers
 use App\Http\Controllers\Auth\OtpPasswordResetController;
@@ -214,6 +215,9 @@ Route::middleware(['auth:sanctum'])->group(function() {
         // SUPER ADMIN EXCLUSIVES
         // ---------------------------------------------------------------------
         Route::middleware(['role:super_admin'])->group(function () {
+            // --> ClearCache
+            Route::post('/system/clear-cache', [SystemController::class, 'clearCache']);
+
             //Delete ==>> Users 
             Route::delete('v1/trustees/{boardOfTrustee}',[BoardOfTrusteeController::class,'destroy']);
             Route::delete('v1/positions/{boardPosition}',[BoardPositionController::class,'destroy']);
