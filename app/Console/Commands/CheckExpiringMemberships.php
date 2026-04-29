@@ -11,7 +11,7 @@ class CheckExpiringMemberships extends Command
 {
     // The command you will type in terminal to run this
     protected $signature = 'memberships:check-expiring';
-    protected $description = 'Check for expiring memberships and send emails via Gmail SMTP';
+    protected $description = 'Check for expiring memberships and send 3 warnings (3, 2, 1 months) before expiration via Gmail SMTP';
 
     public function handle()
     {
@@ -33,16 +33,29 @@ class CheckExpiringMemberships extends Command
             $isExpired = false;
             $monthsUntil = 0;
 
-            // CONDITION 1: Expiring in exactly 1 Month
-            if ($now->isSameDay($endDate->copy()->subMonth())) {
+            // CONDITION 1: Expiring in exactly 3 Months
+            if ($now->isSameDay($endDate->copy()->subMonths(3))) {
+                 $sendEmail = true;
+                 $isExpired = false;
+                 $monthsUntil = 3;
+            }
+            // CONDITION 2: Expiring in exactly 2 Months
+            elseif ($now->isSameDay($endDate->copy()->subMonths(2))) {
+                 $sendEmail = true;
+                 $isExpired = false;
+                 $monthsUntil = 2;
+            }
+            // CONDITION 3: Expiring in exactly 1 Month
+            elseif ($now->isSameDay($endDate->copy()->subMonth())) {
                  $sendEmail = true;
                  $isExpired = false;
                  $monthsUntil = 1;
             } 
-            // CONDITION 2: Expiring Today or Already Past
+            // CONDITION 4: Expiring Today or Already Past
             elseif ($now->greaterThanOrEqualTo($endDate)) {
                  $sendEmail = true;
                  $isExpired = true;
+                 $monthsUntil = 0;
                  
                  // Update their status to expired in the database
                  $member->update(['status' => 'expired']);
@@ -60,17 +73,22 @@ class CheckExpiringMemberships extends Command
                 ];
 
                 try {
-                    Mail::send('emails.membership_expiry', $emailData, function($message) use ($user, $memberName, $isExpired) {
-                        $subject = $isExpired 
-                            ? 'Action Required: PCCI Membership Expired' 
-                            : 'Reminder: PCCI Membership Expiring Soon';
+                    Mail::send('emails.membership_expiry', $emailData, function($message) use ($user, $memberName, $isExpired, $monthsUntil) {
+                        
+                        // Dynamically set subject based on warning stage
+                        if ($isExpired) {
+                            $subject = 'Action Required: PCCI Membership Expired';
+                        } else {
+                            $monthText = $monthsUntil > 1 ? 'Months' : 'Month';
+                            $subject = "Reminder: PCCI Membership Expiring in {$monthsUntil} {$monthText}";
+                        }
                             
                         $message->to($user->email, $memberName)
                                 ->subject($subject);
                     });
                     
                     $emailsSent++;
-                    $this->info("Expiry email sent successfully to: {$user->email}");
+                    $this->info("Expiry email ({$monthsUntil} months warning) sent successfully to: {$user->email}");
                     
                 } catch (\Exception $e) {
                     \Log::error("Failed to send expiry email to {$user->email}: " . $e->getMessage());
