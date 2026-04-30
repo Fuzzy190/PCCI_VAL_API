@@ -153,12 +153,14 @@ class ApplicantController extends Controller
 
                 try {
                     if ($data['status'] === 'approved') {
-                        \Mail::send('emails.applicant_approved', ['applicant' => $applicant], function($message) use ($applicant, $applicantName) {
+                        // FIX: Pass 'applicantName' to the view instead of 'applicant'
+                        \Mail::send('emails.applicant_approved', ['applicantName' => $applicantName], function($message) use ($applicant, $applicantName) {
                             $message->to($applicant->email, $applicantName)
                                     ->subject('Action Required: PCCI Valenzuela Application Approved');
                         });
                     } elseif ($data['status'] === 'paid') {
-                        \Mail::send('emails.applicant_approved_paid', ['applicant' => $applicant], function($message) use ($applicant, $applicantName) {
+                        // FIX: Pass 'applicantName' to the view instead of 'applicant'
+                        \Mail::send('emails.applicant_approved_paid', ['applicantName' => $applicantName], function($message) use ($applicant, $applicantName) {
                             $message->to($applicant->email, $applicantName)
                                     ->subject('Update: PCCI Valenzuela Payment Verified');
                         });
