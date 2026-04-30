@@ -2,59 +2,48 @@
 
 namespace App\Notifications;
 
-use App\Models\MembershipDue;
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use Illuminate\Notifications\Messages\MailMessage;
 
-/**
- * Email notification for membership dues expiration - First Warning (5 months before)
- * 
- * SET ASIDE: Enable by uncommenting "implements ShouldQueue" to queue emails
- * This will send via configured mail driver (SMTP, Mailgun, etc)
- */
 class MembershipDuesFirstWarningEmail extends Notification
 {
     use Queueable;
 
-    protected $membershipDue;
+    public $member;
 
-    public function __construct(MembershipDue $membershipDue)
+    public function __construct($member)
     {
-        $this->membershipDue = $membershipDue;
+        $this->member = $member;
     }
 
-    /**
-     * Get the notification's delivery channels.
-     *
-     * @return array<int, string>
-     */
-    public function via(object $notifiable): array
+    // 1. THIS IS THE MAGIC LINE: Tell Laravel to trigger BOTH channels
+    public function via($notifiable)
     {
-        return ['mail']; // Send via email
+        return ['mail', 'database']; 
     }
 
-    /**
-     * Get the mail representation of the notification.
-     */
-    public function toMail(object $notifiable): MailMessage
+    // 2. The Email Payload (Sent via SMTP/Resend)
+    public function toMail($notifiable)
     {
-        $member = $this->membershipDue->member;
-        $expirationDate = $member->membership_end_date->format('F d, Y');
-        $remainingDays = now()->diffInDays($member->membership_end_date);
-
         return (new MailMessage)
-            ->subject('Membership Renewal Notice - First Warning')
-            ->greeting("Hello {$member->applicant->contact_person_name},")
-            ->line("Your PCCI membership is expiring soon!")
-            ->line("**Expiration Date:** {$expirationDate} ({$remainingDays} days remaining)")
-            ->line("**Amount Due:** ₱" . number_format($this->membershipDue->amount, 2))
-            ->line("**Membership Year:** {$this->membershipDue->due_year}")
-            ->line("")
-            ->line("Please renew your membership to continue enjoying PCCI benefits and networking opportunities.")
-            ->action('Renew Membership', config('app.frontend_url') . '/renew-membership')
-            ->line("If you have any questions, please contact our office.")
-            ->salutation('Best regards, PCCI');
+                    ->subject('First Warning: Membership Expiring Soon')
+                    ->greeting('Hello ' . $this->member->applicant->basic_profile->registered_business_name)
+                    ->line('Your membership will expire in 30 days.')
+                    ->action('Renew Now', url('/renew'))
+                    ->line('Thank you for being a valued member!');
+    }
+
+    // 3. The In-App Payload (Saved to the new 'notifications' table)
+    public function toDatabase($notifiable)
+    {
+        $businessName = $this->member->applicant->basic_profile->registered_business_name ?? 'A member';
+
+        return [
+            'title'   => 'Membership Expiring Soon',
+            'message' => "{$businessName}'s membership expires in 30 days.",
+            'icon'    => 'fa-exclamation-triangle',
+            'tone'    => 'text-warning'
+        ];
     }
 }

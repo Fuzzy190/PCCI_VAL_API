@@ -11,17 +11,12 @@ return new class extends Migration
      */
     public function up(): void
     {
-       Schema::create('expiring_membership_notifications', function (Blueprint $table) {
-            $table->id();
-
-            $table->foreignId('member_id')
-                ->constrained()
-                ->cascadeOnDelete();
-
-            $table->text('message');
-
-            $table->boolean('is_read')->default(false);
-
+        Schema::create('notifications', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->string('type');
+            $table->morphs('notifiable');
+            $table->text('data');
+            $table->timestamp('read_at')->nullable();
             $table->timestamps();
         });
     }
@@ -31,6 +26,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('expiring_membership_notifications');
+        Schema::dropIfExists('notifications');
     }
 };
