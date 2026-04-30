@@ -66,6 +66,9 @@ Route::get('/v1/payment-channels', [PaymentChannelController::class, 'index']);
 // MISC ROUTES 
 Route::post('v1/upload', [FileUploadController::class, 'upload']);
 
+// CLEAR CACHE
+Route::post('/system/clear-cache', [SystemController::class, 'clearCache']);
+
 // DEV-ONLY: Refresh DB (Super Admin Only)
 Route::get('/refresh-db', function () {
     try {
@@ -199,7 +202,6 @@ Route::middleware(['auth:sanctum'])->group(function() {
         // SUPER ADMIN EXCLUSIVES
         // ---------------------------------------------------------------------
         Route::middleware(['role:super_admin'])->group(function () {
-            Route::post('/system/clear-cache', [SystemController::class, 'clearCache']);
             Route::delete('v1/trustees/{boardOfTrustee}',[BoardOfTrusteeController::class,'destroy']);
             Route::delete('v1/positions/{boardPosition}',[BoardPositionController::class,'destroy']);
         });
