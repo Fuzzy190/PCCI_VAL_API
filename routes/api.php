@@ -27,6 +27,7 @@ use App\Http\Controllers\Api\V1\UserController;
 use App\Http\Controllers\Api\V1\FileUploadController;
 use App\Http\Controllers\Api\V1\SystemController;
 use App\Http\Controllers\Api\V1\NotificationController;
+use App\Http\Controllers\Api\V1\SystemAlertNotification;
 
 // Auth Controllers
 use App\Http\Controllers\Auth\OtpPasswordResetController;
@@ -103,6 +104,16 @@ Route::get('/refresh-db', function () {
 // =========================================================================
 Route::middleware(['auth:sanctum'])->group(function() {
     
+    Route::get('/v1/test-notif', function (Illuminate\Http\Request $request) {
+        $request->user()->notify(new SystemAlertNotification(
+            'Connection Success!', 
+            'The backend notification was saved to the database and fetched by the frontend.', 
+            'fa-rocket', 
+            'text-primary'
+        ));
+        return response()->json(['message' => 'Test notification sent to your account!']);
+    });
+
     // --- EXEMPT FROM PASSWORD ENFORCEMENT ---
     Route::get('/v1/user', function (Request $request) {
         return new UserResource($request->user());
