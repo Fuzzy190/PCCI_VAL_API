@@ -9,7 +9,7 @@ use App\Models\Applicant;
 use App\Http\Resources\ApplicantResource;
 use Illuminate\Support\Facades\Storage;
 use App\Services\MailtrapApiService;
-use Illuminate\Support\Facades\Mail; // <--- THIS IS THE MISSING IMPORT THAT FIXES THE ERROR
+use Illuminate\Support\Facades\Mail; 
 
 class ApplicantController extends Controller
 {
@@ -65,7 +65,7 @@ class ApplicantController extends Controller
         $applicant = Applicant::create($data);
 
         // ==================== SEND WELCOME EMAIL ====================
-        $applicantName = $applicant->rep_first_name . ' ' . $applicant->rep_surname;
+        $applicantName = $applicant->first_name . ' ' . $applicant->last_name;
         
         try {
             Mail::send('emails.applicant_welcome', ['applicantName' => $applicantName], function($message) use ($applicant, $applicantName) {
@@ -149,7 +149,7 @@ class ApplicantController extends Controller
 
             // ==================== NOTIFICATION FLOW ====================
             if (isset($data['status']) && $oldStatus !== $data['status']) {
-                $applicantName = $applicant->rep_first_name . ' ' . $applicant->rep_surname;
+                $applicantName = $applicant->first_name . ' ' . $applicant->last_name;
 
                 try {
                     if ($data['status'] === 'approved') {
@@ -222,13 +222,12 @@ class ApplicantController extends Controller
         ]);
 
         // 3. Send the Rejection Email via Gmail SMTP
-        $applicantName = $applicant->rep_first_name . ' ' . $applicant->rep_surname;
+        $applicantName = $applicant->first_name . ' ' . $applicant->last_name;
         $rejectionReason = $request->rejection_reason;
 
         $emailData = [
             'applicantName' => $applicantName,
             'status' => 'Rejected',
-            // THIS is the fix: Make it a hardcoded string, NOT a variable
             'messageText' => "We regret to inform you that your application or payment has been rejected. Please review the specific reason below and contact our administration for further instructions.",
             'rejectionReason' => $rejectionReason, 
             'isWarning' => true 
