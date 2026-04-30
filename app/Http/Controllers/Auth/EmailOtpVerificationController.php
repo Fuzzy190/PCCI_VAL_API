@@ -13,36 +13,37 @@ class EmailOtpVerificationController extends Controller
 {
     public function sendOtp(Request $request)
     {
-        // 1. Removed 'exists:users,email' so new emails can receive an OTP
+        // 1. BULLETPROOF VALIDATION: 
+        // This will immediately abort and return a 422 error to the frontend 
+        // if the email already exists in either the users or applicants table.
         $request->validate([
-            'email' => 'required|email'
+            'email' => [
+                'required', 
+                'email',
+                'unique:users,email',      // Fails if already a registered user
+                'unique:applicants,email'  // Fails if already an applicant
+            ]
+        ], [
+            // Custom error messages for the frontend to display
+            'email.unique' => 'This email is already registered in our system.'
         ]);
-
-        // Find the user if they exist
-        $user = User::where('email', $request->email)->first();
-
-        // 2. Added a safety check: Only check for verification IF the user exists
-        if ($user && $user->hasVerifiedEmail()) {
-            return response()->json(['message' => 'Email is already verified.'], 400);
-        }
 
         // Generate a 6-digit OTP
         $otp = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
 
         // Save or update the OTP for this email
         EmailOtp::updateOrCreate(
-            ['email' => $request->email], // 3. Changed from $user->email to $request->email
+            ['email' => $request->email], 
             [
                 'otp' => $otp,
-                'expires_at' => Carbon::now()->addMinutes(10)
+                'expires_at' => \Carbon\Carbon::now()->addMinutes(10)
             ]
         );
 
-        // Send Email using Gmail SMTP and the custom Blade template
+        // Send Email using your SMTP/API and the custom Blade template
         $emailData = ['otp' => $otp];
         
-        Mail::send('emails.verify_email_otp', $emailData, function($message) use ($request) {
-            // 4. Changed from $user->email to $request->email
+        \Illuminate\Support\Facades\Mail::send('emails.verify_email_otp', $emailData, function($message) use ($request) {
             $message->to($request->email)
                     ->subject('PCCI Valenzuela - Your Verification Code');
         });
