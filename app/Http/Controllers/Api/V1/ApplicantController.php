@@ -13,26 +13,17 @@ use Illuminate\Support\Facades\Mail;
 
 class ApplicantController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
     public function index(Request $request)
     {
         $user = $request->user();
-
         $query = Applicant::query();
 
-        // ROLE-BASED BASE RESTRICTIONS
         if ($user->hasRole('treasurer')) {
-            // Treasurer can only see approved or paid (Remove Pending)
             $query->whereIn('status', ['approved', 'paid']);
         } elseif (! $user->hasAnyRole(['super_admin', 'admin'])) {
-            return response()->json([
-                'message' => 'Unauthorized.'
-            ], 403);
+            return response()->json(['message' => 'Unauthorized.'], 403);
         }
 
-        // OPTIONAL FILTERING
         if ($request->filled('status')) {
             $query->where('status', $request->status);
         }
@@ -44,12 +35,10 @@ class ApplicantController extends Controller
     {
        $data = $request->validated();
 
-        // Server-controlled fields
         $data['date_submitted'] = now();
         $data['status'] = 'pending';
         $data['membership_type'] = null;
 
-        // 🚀 SWITCHING TO S3 (BACKBLAZE)
         if ($request->hasFile('mayors_permit')) {
             $data['mayors_permit_path'] = $request->file('mayors_permit')->store('applicants/documents', 's3');
         }
@@ -64,8 +53,8 @@ class ApplicantController extends Controller
 
         $applicant = Applicant::create($data);
 
-        // ==================== SEND WELCOME EMAIL ====================
-        $applicantName = $applicant->first_name . ' ' . $applicant->last_name;
+        // USE CORRECT APPLICANTS COLUMNS
+        $applicantName = $applicant->rep_first_name . ' ' . $applicant->rep_surname;
         
         try {
             Mail::send('emails.applicant_welcome', ['applicantName' => $applicantName], function($message) use ($applicant, $applicantName) {
@@ -73,104 +62,58 @@ class ApplicantController extends Controller
                         ->subject('Application Received - PCCI Valenzuela');
             });
         } catch (\Exception $e) {
-            // Log the error so it doesn't crash the applicant submission if Gmail SMTP fails
             \Log::error('Failed to send applicant welcome email: ' . $e->getMessage());
         }
-        // ============================================================
 
         return new ApplicantResource($applicant);
     }
 
-    /**
-     * Display the specified resource.
-     */
     public function show(Applicant $applicant)
     {
         $user = auth()->user();
 
-        if ($user->hasRole('treasurer') && 
-            !in_array($applicant->status, ['approved', 'paid'])) {
-
-            return response()->json([
-                'message' => 'Access denied.'
-            ], 403);
+        if ($user->hasRole('treasurer') && !in_array($applicant->status, ['approved', 'paid'])) {
+            return response()->json(['message' => 'Access denied.'], 403);
         }
 
         return new ApplicantResource($applicant);
     }
 
-
-
     public function update(Request $request, $id, MailtrapApiService $mailtrap)
     {   
         $user = $request->user();
-
-        // 1. FIX: Manually find the applicant by ID to bypass route binding errors
         $applicant = \App\Models\Applicant::find($id);
 
         if (!$applicant) {
             return response()->json(['message' => 'Applicant not found.'], 404);
         }
 
-        /**
-         * ADMIN / SUPER_ADMIN / TREASURER
-         */
         if ($user->hasAnyRole(['super_admin', 'admin', 'treasurer'])) {
 
             $data = $request->validate([
                 'status' => 'required|in:pending,approved,rejected,paid',
-                // 2. FIX: Allow string values to match frontend options like 'Associate'
                 'membership_type' => 'nullable|string', 
             ]);
 
-            // Ensure Treasurer can ONLY update the status to paid
             if ($user->hasRole('treasurer') && !$user->hasAnyRole(['super_admin', 'admin'])) {
                 if ($applicant->status !== 'approved' || $data['status'] !== 'paid') {
-                    return response()->json([
-                        'message' => 'Treasurers are only authorized to verify payments for approved applications.'
-                    ], 403);
+                    return response()->json(['message' => 'Treasurers are only authorized to verify payments.'], 403);
                 }
             }
 
             $oldStatus = $applicant->status;
 
-            // ==========================================================
-            // 3. FIX: UPDATE THE DATA AND COMMIT TO DATABASE
-            // ==========================================================
             $applicant->status = $data['status'];
             
             if (isset($data['membership_type'])) {
                 $applicant->membership_type = $data['membership_type'];
             }
             
-            // Save the changes to the database
+            // Saving this will trigger the ApplicantObserver if the status changed!
             $applicant->save(); 
-            // ==========================================================
 
-            // ==================== NOTIFICATION FLOW ====================
-            if (isset($data['status']) && $oldStatus !== $data['status']) {
-                $applicantName = $applicant->first_name . ' ' . $applicant->last_name;
-
-                try {
-                    if ($data['status'] === 'approved') {
-                        // FIX: Pass 'applicantName' to the view instead of 'applicant'
-                        \Mail::send('emails.applicant_approved', ['applicantName' => $applicantName], function($message) use ($applicant, $applicantName) {
-                            $message->to($applicant->email, $applicantName)
-                                    ->subject('Action Required: PCCI Valenzuela Application Approved');
-                        });
-                    } elseif ($data['status'] === 'paid') {
-                        // FIX: Pass 'applicantName' to the view instead of 'applicant'
-                        \Mail::send('emails.applicant_approved_paid', ['applicantName' => $applicantName], function($message) use ($applicant, $applicantName) {
-                            $message->to($applicant->email, $applicantName)
-                                    ->subject('Update: PCCI Valenzuela Payment Verified');
-                        });
-                    }
-                } catch (\Exception $e) {
-                    \Log::error('Failed to send status update email: ' . $e->getMessage());
-                }
-            }
+            // NOTE: We do not need the Mail::send block here anymore because the ApplicantObserver handles it automatically!
             
-            // Return actual updated data to the frontend
             return response()->json([
                 'message' => 'Applicant updated successfully',
                 'data' => $applicant
@@ -180,9 +123,6 @@ class ApplicantController extends Controller
         return response()->json(['message' => 'Unauthorized action.'], 403);
     }
 
-    /**
-     * Remove the specified resource from storage.
-     */
     public function destroy(Applicant $applicant)
     {
         $applicant->delete();
@@ -203,7 +143,6 @@ class ApplicantController extends Controller
             default => null,
         };
 
-        // Check S3 disk instead of local
         if (!$filePath || !Storage::disk('s3')->exists($filePath)) {
             return response()->json(['message' => 'File not found on cloud storage'], 404);
         }
@@ -213,18 +152,16 @@ class ApplicantController extends Controller
 
    public function reject(Request $request, Applicant $applicant)
     {
-        // 1. Validate that a rejection reason is provided
         $request->validate([
             'rejection_reason' => 'required|string|max:1000'
         ]);
 
-        // 2. Update the Applicant status
         $applicant->update([
             'status' => 'rejected',
         ]);
 
-        // 3. Send the Rejection Email via Gmail SMTP
-        $applicantName = $applicant->first_name . ' ' . $applicant->last_name;
+        // USE CORRECT APPLICANTS COLUMNS
+        $applicantName = $applicant->rep_first_name . ' ' . $applicant->rep_surname;
         $rejectionReason = $request->rejection_reason;
 
         $emailData = [

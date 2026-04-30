@@ -3,20 +3,34 @@
 namespace App\Observers;
 
 use App\Models\Applicant;
-use App\Mail\ApplicantApprovedPaid;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Log;
 
 class ApplicantObserver
 {
-    /**
-     * Handle the Applicant "updated" event.
-     */
     public function updated(Applicant $applicant)
     {
-        // Check if 'status' changed to 'paid'
-        if ($applicant->isDirty('status') && $applicant->status === 'paid') {
-            // Send email to applicant
-            Mail::to($applicant->email)->send(new ApplicantApprovedPaid($applicant));
+        // Only trigger if the status was actually changed
+        if ($applicant->isDirty('status')) {
+            
+            // USE THE CORRECT APPLICANTS TABLE COLUMNS
+            $applicantName = $applicant->rep_first_name . ' ' . $applicant->rep_surname;
+
+            try {
+                if ($applicant->status === 'approved') {
+                    Mail::send('emails.applicant_approved', ['applicantName' => $applicantName], function($message) use ($applicant, $applicantName) {
+                        $message->to($applicant->email, $applicantName)
+                                ->subject('Action Required: PCCI Valenzuela Application Approved');
+                    });
+                } elseif ($applicant->status === 'paid') {
+                    Mail::send('emails.applicant_approved_paid', ['applicantName' => $applicantName], function($message) use ($applicant, $applicantName) {
+                        $message->to($applicant->email, $applicantName)
+                                ->subject('Update: PCCI Valenzuela Payment Verified');
+                    });
+                }
+            } catch (\Exception $e) {
+                Log::error('Observer Email Error: ' . $e->getMessage());
+            }
         }
     }
 }
