@@ -6,5 +6,5 @@ use Illuminate\Database\Eloquent\Model;
 
 class PaymentChannel extends Model
 {
-    protected $fillable = ['payment_method', 'account_name', 'account_no', 'is_active'];
+    protected $fillable = ['payment_method', 'account_name', 'account_no', 'amount', 'is_active'];
 }

@@ -16,6 +16,7 @@ return new class extends Migration
             $table->string('payment_method'); // e.g., GCash
             $table->string('account_name');   // e.g., Juan Dela Cruz
             $table->string('account_no');     // e.g., 09123456789
+            $table->string('amount')->nullable(); // <-- ADD THIS LINE
             $table->boolean('is_active')->default(true);
             $table->timestamps();
         });

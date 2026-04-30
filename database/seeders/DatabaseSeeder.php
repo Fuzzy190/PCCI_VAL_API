@@ -16,6 +16,8 @@ class DatabaseSeeder extends Seeder
             ApplicantSeeder::class,
             MemberSeeder::class,
             UserMemberSeeder::class,
+
+            PaymentChannelSeeder::class,
         ]);
     }
 }

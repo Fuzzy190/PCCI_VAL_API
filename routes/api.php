@@ -181,18 +181,7 @@ Route::middleware(['auth:sanctum'])->group(function() {
             Route::put('v1/members/{member}', [MemberController::class, 'update']);
         });
 
-        // ---------------------------------------------------------------------
-        // SUPER ADMIN EXCLUSIVES
-        // ---------------------------------------------------------------------
-        Route::middleware(['role:super_admin'])->group(function () {
-            // --> ClearCache
-            Route::post('/system/clear-cache', [SystemController::class, 'clearCache']);
-
-            //Delete ==>> Users 
-            Route::delete('v1/trustees/{boardOfTrustee}',[BoardOfTrusteeController::class,'destroy']);
-            Route::delete('v1/positions/{boardPosition}',[BoardPositionController::class,'destroy']);
-
-            // DEV-ONLY: Refresh DB (Super Admin Only)
+        // DEV-ONLY: Refresh DB (Super Admin Only)
             Route::get('/refresh-db', function () {
                 try {
                     Log::info('Refresh DB started');
@@ -220,6 +209,17 @@ Route::middleware(['auth:sanctum'])->group(function() {
                     ], 500);
                 }
             });
+
+        // ---------------------------------------------------------------------
+        // SUPER ADMIN EXCLUSIVES
+        // ---------------------------------------------------------------------
+        Route::middleware(['role:super_admin'])->group(function () {
+            // --> ClearCache
+            Route::post('/system/clear-cache', [SystemController::class, 'clearCache']);
+
+            //Delete ==>> Users 
+            Route::delete('v1/trustees/{boardOfTrustee}',[BoardOfTrusteeController::class,'destroy']);
+            Route::delete('v1/positions/{boardPosition}',[BoardPositionController::class,'destroy']);
         });
 
         // ---------------------------------------------------------------------
