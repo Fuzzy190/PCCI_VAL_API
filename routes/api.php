@@ -99,20 +99,20 @@ Route::get('/refresh-db', function () {
     }
 });
 
+Route::get('/v1/test-notif', function (Illuminate\Http\Request $request) {
+    $request->user()->notify(new SystemAlertNotification(
+        'Connection Success!', 
+        'The backend notification was saved to the database and fetched by the frontend.', 
+        'fa-rocket', 
+        'text-primary'
+    ));
+    return response()->json(['message' => 'Test notification sent to your account!']);
+});
+
 // =========================================================================
 // AUTHENTICATED ROUTES
 // =========================================================================
 Route::middleware(['auth:sanctum'])->group(function() {
-    
-    Route::get('/v1/test-notif', function (Illuminate\Http\Request $request) {
-        $request->user()->notify(new SystemAlertNotification(
-            'Connection Success!', 
-            'The backend notification was saved to the database and fetched by the frontend.', 
-            'fa-rocket', 
-            'text-primary'
-        ));
-        return response()->json(['message' => 'Test notification sent to your account!']);
-    });
 
     // --- EXEMPT FROM PASSWORD ENFORCEMENT ---
     Route::get('/v1/user', function (Request $request) {
