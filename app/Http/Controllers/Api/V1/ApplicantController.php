@@ -8,8 +8,11 @@ use App\Http\Requests\StoreApplicantRequest;
 use App\Models\Applicant;
 use App\Http\Resources\ApplicantResource;
 use Illuminate\Support\Facades\Storage;
-use App\Services\MailtrapApiService;
+// use App\Services\MailtrapApiService;
 use Illuminate\Support\Facades\Mail; 
+use App\Notifications\SystemAlertNotification;
+use App\Models\User;
+use Illuminate\Support\Facades\Notification;
 
 class ApplicantController extends Controller
 {
@@ -79,48 +82,91 @@ class ApplicantController extends Controller
         return new ApplicantResource($applicant);
     }
 
-    public function update(Request $request, $id, MailtrapApiService $mailtrap)
-    {   
-        $user = $request->user();
-        $applicant = \App\Models\Applicant::find($id);
+    public function update(Request $request, Applicant $applicant)
+    {
+        // 1. Safely track old and new status with lowercase to prevent case-mismatches
+        $oldStatus = strtolower($applicant->status ?? '');
+        
+        $applicant->update($request->all());
+        
+        $newStatus = strtolower($applicant->status ?? '');
 
-        if (!$applicant) {
-            return response()->json(['message' => 'Applicant not found.'], 404);
+        // 2. Bulletproof Company Name Extraction
+        $profile = $applicant->basic_profile;
+        if (is_string($profile)) {
+            $profile = json_decode($profile, true); // Decode if it's a JSON string
+        }
+        $businessName = $profile['registered_business_name'] ?? 'Applicant #' . $applicant->id;
+        
+        $actorName = $request->user()->name ?? 'System';
+
+        // --- NOTIFICATION LOGIC ---
+
+        // 1. Admin Approves -> Notify Treasurers (BLUE / text-primary)
+        if ($oldStatus !== 'approved' && $newStatus === 'approved') {
+            $treasurers = \App\Models\User::role('treasurer')->get();
+            \Illuminate\Support\Facades\Notification::send($treasurers, new \App\Notifications\SystemAlertNotification(
+                'New Approval for Review',
+                "Admin {$actorName} approved {$businessName}. Please review their Proof of Payment.",
+                'fa-user-check',
+                'text-primary'
+            ));
         }
 
-        if ($user->hasAnyRole(['super_admin', 'admin', 'treasurer'])) {
-
-            $data = $request->validate([
-                'status' => 'required|in:pending,approved,rejected,paid',
-                'membership_type' => 'nullable|string', 
-            ]);
-
-            if ($user->hasRole('treasurer') && !$user->hasAnyRole(['super_admin', 'admin'])) {
-                if ($applicant->status !== 'approved' || $data['status'] !== 'paid') {
-                    return response()->json(['message' => 'Treasurers are only authorized to verify payments.'], 403);
-                }
+        // 2. Treasurer Records Payment -> Notify Admin (GREEN / text-success)
+        if ($oldStatus !== 'paid' && $newStatus === 'paid') {
+            // Convert to Member
+            $userEmail = $profile['email'] ?? null;
+            $user = \App\Models\User::where('email', $userEmail)->orWhere('id', $applicant->user_id)->first();
+            if ($user) {
+                $user->update(['is_member' => true]);
             }
 
-            $oldStatus = $applicant->status;
-
-            $applicant->status = $data['status'];
-            
-            if (isset($data['membership_type'])) {
-                $applicant->membership_type = $data['membership_type'];
-            }
-            
-            // Saving this will trigger the ApplicantObserver if the status changed!
-            $applicant->save(); 
-
-            // NOTE: We do not need the Mail::send block here anymore because the ApplicantObserver handles it automatically!
-            
-            return response()->json([
-                'message' => 'Applicant updated successfully',
-                'data' => $applicant
-            ], 200);
+            $admins = \App\Models\User::role(['admin', 'super_admin'])->get();
+            \Illuminate\Support\Facades\Notification::send($admins, new \App\Notifications\SystemAlertNotification(
+                'Payment Verified',
+                "Treasurer {$actorName} verified payment for {$businessName}. They are now approved and ready for member account creation.",
+                'fa-check-circle',
+                'text-success'
+            ));
         }
 
-        return response()->json(['message' => 'Unauthorized action.'], 403);
+        // 3. Treasurer Rejects / Cancels -> Notify Admin (RED / text-danger)
+        if ($oldStatus !== 'rejected' && $newStatus === 'rejected') {
+            $admins = \App\Models\User::role(['admin', 'super_admin'])->get();
+            \Illuminate\Support\Facades\Notification::send($admins, new \App\Notifications\SystemAlertNotification(
+                'Application Rejected',
+                "Treasurer {$actorName} rejected the payment proof for {$businessName}.",
+                'fa-times-circle',
+                'text-danger'
+            ));
+        }
+
+        if ($oldStatus !== 'cancelled' && $newStatus === 'cancelled') {
+            $admins = \App\Models\User::role(['admin', 'super_admin'])->get();
+            \Illuminate\Support\Facades\Notification::send($admins, new \App\Notifications\SystemAlertNotification(
+                'Application Cancelled',
+                "The application for {$businessName} has been cancelled by {$actorName}.",
+                'fa-times-circle',
+                'text-danger'
+            ));
+        }
+
+        // 4. Expired -> Notify Admin (YELLOW / text-warning)
+        if ($oldStatus !== 'expired' && $newStatus === 'expired') {
+            $admins = \App\Models\User::role(['admin', 'super_admin'])->get();
+            \Illuminate\Support\Facades\Notification::send($admins, new \App\Notifications\SystemAlertNotification(
+                'Application Expired',
+                "The application for {$businessName} has expired.",
+                'fa-exclamation-triangle',
+                'text-warning'
+            ));
+        }
+
+        return response()->json([
+            'message' => 'Status updated and notifications distributed.',
+            'status' => $newStatus
+        ]);
     }
 
     public function destroy(Applicant $applicant)

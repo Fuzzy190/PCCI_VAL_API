@@ -27,7 +27,7 @@ use App\Http\Controllers\Api\V1\UserController;
 use App\Http\Controllers\Api\V1\FileUploadController;
 use App\Http\Controllers\Api\V1\SystemController;
 use App\Http\Controllers\Api\V1\NotificationController;
-use App\Http\Controllers\Api\V1\SystemAlertNotification;
+use App\Notifications\SystemAlertNotification;
 
 // Auth Controllers
 use App\Http\Controllers\Auth\OtpPasswordResetController;
@@ -100,13 +100,27 @@ Route::get('/refresh-db', function () {
 });
 
 Route::get('/v1/test-notif', function (Illuminate\Http\Request $request) {
-    $request->user()->notify(new SystemAlertNotification(
+    // 1. Try to get the logged-in user, otherwise find the first treasurer
+    $user = $request->user() ?: \App\Models\User::role('treasurer')->first();
+
+    if (!$user) {
+        return response()->json(['error' => 'No treasurer found in the database'], 404);
+    }
+
+    // 2. Trigger the notification
+    $user->notify(new SystemAlertNotification(
         'Connection Success!', 
-        'The backend notification was saved to the database and fetched by the frontend.', 
+        'The backend notification was saved to the database. Environment: ' . config('app.env'), 
         'fa-rocket', 
         'text-primary'
     ));
-    return response()->json(['message' => 'Test notification sent to your account!']);
+
+    return response()->json([
+        'message' => 'Test notification sent!',
+        'sent_to' => $user->email,
+        'environment' => config('app.env'),
+        'base_url' => config('app.url')
+    ]);
 });
 
 // =========================================================================

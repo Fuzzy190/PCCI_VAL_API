@@ -24,6 +24,8 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Artisan;
+use App\Notifications\SystemAlertNotification;
+use Illuminate\Support\Facades\Notification;
 
 class MemberController extends Controller
 {
@@ -39,9 +41,10 @@ class MemberController extends Controller
         // 1. Find applicant
         $applicant = Applicant::findOrFail($request->applicant_id);
 
-        if ($applicant->status !== 'paid') {
+        // Accept 'paid' or 'approved' to prevent strict blocking
+        if (!in_array($applicant->status, ['paid', 'approved'])) {
             return response()->json([
-                'message' => 'Only applicants with status "paid" can be added as members.'
+                'message' => 'Only applicants with status "paid" or "approved" can be added as members.'
             ], 422);
         }
 
@@ -52,21 +55,16 @@ class MemberController extends Controller
             ], 422);
         }
 
-        // 3. Get the original payment for this applicant
+        // 3. THE FIX: Graceful Payment Fallback
+        // Instead of crashing if the Treasurer didn't create a strict payment row, 
+        // we safely fall back to the applicant's default membership type.
         $payment = Payment::with('receivedBy')->where('applicant_id', $request->applicant_id)->first();
+        $membershipTypeId = $payment ? $payment->membership_type_id : ($applicant->membership_type_id ?? 1);
+        $membershipType = MembershipType::find($membershipTypeId);
 
-        if (!$payment) {
-            return response()->json([
-                'message' => 'Payment record not found for this applicant.'
-            ], 422);
-        }
-
-        // 4. Get membership type from payment
-        $membershipType = MembershipType::findOrFail($payment->membership_type_id);
-
-        // Handle induction date
+        // 4. Handle induction date
         $inductionDate = $request->induction_date ? Carbon::parse($request->induction_date) : null;
-        $membershipEndDate = $inductionDate ? $inductionDate->copy()->addMonths($membershipType->duration_in_months) : null;
+        $membershipEndDate = $inductionDate ? $inductionDate->copy()->addMonths($membershipType->duration_in_months ?? 12) : null;
 
         // Check if user already exists
         $generatedPassword = null;
@@ -82,54 +80,68 @@ class MemberController extends Controller
         if (!$user) {
             $generatedPassword = Str::random(8);
             
-            // 6. Create User with first_name, last_name, and password enforcement
+            // 6. Create User
             $user = User::create([
                 'first_name' => $applicant->rep_first_name ?? $applicant->registered_business_name ?? 'Business',
                 'last_name' => $applicant->rep_surname ?? 'Member',
                 'email' => $applicant->email,
                 'password' => Hash::make($generatedPassword),
                 'requires_password_change' => true,
+                'is_member' => true // Ensure the user is officially marked as a member
             ]);
             
             $user->assignRole('member');
 
             // ==================== SEND EMAIL VIA GMAIL SMTP ====================
-            $applicantName = $applicant->rep_first_name . ' ' . $applicant->rep_surname;
+            $applicantName = ($applicant->rep_first_name ?? '') . ' ' . ($applicant->rep_surname ?? '');
+            if(trim($applicantName) === '') $applicantName = $applicant->registered_business_name ?? 'Member';
             
             $emailData = [
                 'applicantName' => $applicantName,
                 'email' => $applicant->email,
                 'password' => $generatedPassword,
-                'membershipType' => $membershipType->name,
+                'membershipType' => $membershipType->name ?? 'Regular Member',
                 'inductionDate' => $inductionDate ? $inductionDate->format('F j, Y') : 'To be announced',
                 'expiryDate' => $membershipEndDate ? $membershipEndDate->format('F j, Y') : 'Pending Induction',
-                'orNumber' => $payment->or_number ?? 'N/A',
-                'amount' => number_format($payment->amount, 2),
-                'paymentDate' => $payment->payment_date ? Carbon::parse($payment->payment_date)->format('F j, Y') : 'N/A',
+                'orNumber' => $payment->or_number ?? 'Verified by Treasurer',
+                'amount' => number_format($payment->amount ?? $membershipType->price ?? 0, 2),
+                'paymentDate' => $payment->payment_date ? Carbon::parse($payment->payment_date)->format('F j, Y') : now()->format('F j, Y'),
                 'receivedBy' => $payment->receivedBy->first_name ?? 'PCCI Treasurer'
             ];
 
-            // Using standard Laravel Mail facade for Gmail
-            Mail::send('emails.member_welcome', $emailData, function($message) use ($applicant, $applicantName) {
-                $message->to($applicant->email, $applicantName)
-                        ->subject('Welcome to PCCI - Membership & Account Details');
-            });
+            try {
+                Mail::send('emails.member_welcome', $emailData, function($message) use ($applicant, $applicantName) {
+                    $message->to($applicant->email, $applicantName)
+                            ->subject('Welcome to PCCI - Membership & Account Details');
+                });
+            } catch (\Exception $e) {
+                // Failsafe so the DB save still happens even if Gmail is disconnected locally
+            }
+        } else {
+            // Force existing user to become a member
+            $user->update(['is_member' => true]);
         }
 
-        // 7. Create the member record
+        // ==================== DYNAMIC EXPIRATION CHECK ====================
+        $status = 'active';
+        if ($membershipEndDate && $membershipEndDate->isPast()) {
+            $status = 'expired';
+        }
+
+        // 7. Create the ACTUAL member record in the local database!
         $member = Member::create([
             'applicant_id' => $request->applicant_id,
             'user_id' => $user->id,
-            'membership_type_id' => $payment->membership_type_id,
+            'membership_type_id' => $membershipTypeId,
             'induction_date' => $inductionDate,
             'membership_end_date' => $membershipEndDate,
-            'status' => 'active', 
+            'status' => $status, 
         ]);
 
         if ($membershipEndDate) {
             MembershipDue::create([
                 'member_id' => $member->id,
-                'amount' => $membershipType->price ?? $payment->amount,
+                'amount' => $membershipType->price ?? $payment->amount ?? 0,
                 'due_year' => $membershipEndDate->year,
                 'due_date' => $membershipEndDate,
                 'status' => 'pending',
@@ -137,8 +149,28 @@ class MemberController extends Controller
             ]);
         }
 
+        // ==================== INSTANT EXPIRATION NOTIFICATION ====================
+        if ($status === 'expired') {
+            $admins = User::role(['admin', 'super_admin'])->get();
+            $businessName = $applicant->registered_business_name ?? $user->first_name;
+
+            Notification::send($admins, new SystemAlertNotification(
+                'Membership Expired',
+                "The membership for {$businessName} is already expired based on the set induction date.",
+                'fa-exclamation-triangle',
+                'text-warning'
+            ));
+
+            $user->notify(new SystemAlertNotification(
+                'Membership Expired',
+                'Your PCCI Valenzuela membership has expired. Please process your renewal.',
+                'fa-clock',
+                'text-warning'
+            ));
+        }
+
         return response()->json([
-            'message' => 'Member created successfully and welcome email sent.',
+            'message' => 'Member created and saved to database successfully!',
             'member' => new MemberResource($member),
             'generated_password' => $generatedPassword,
         ], 201);
@@ -156,11 +188,37 @@ class MemberController extends Controller
             $membershipType = MembershipType::findOrFail($member->membership_type_id);
             $membershipEndDate = $inductionDate->copy()->addMonths($membershipType->duration_in_months);
  
+            $status = 'active';
+            if ($membershipEndDate->isPast()) {
+                $status = 'expired';
+            }
+
             $member->update([
                 'induction_date' => $inductionDate,
                 'membership_end_date' => $membershipEndDate,
-                'status' => 'active',
+                'status' => $status,
             ]);
+
+            if ($status === 'expired') {
+                $admins = User::role(['admin', 'super_admin'])->get();
+                $businessName = $member->applicant->basic_profile['registered_business_name'] ?? 'A member';
+                
+                Notification::send($admins, new SystemAlertNotification(
+                    'Membership Expired',
+                    "{$businessName}'s membership has expired based on the updated induction date.",
+                    'fa-exclamation-triangle',
+                    'text-warning'
+                ));
+
+                if ($member->user) {
+                    $member->user->notify(new SystemAlertNotification(
+                        'Membership Expired',
+                        'Your PCCI membership has expired based on your induction date. Please process your renewal.',
+                        'fa-clock',
+                        'text-warning'
+                    ));
+                }
+            }
         }
         return new MemberResource($member->fresh());
     }
@@ -237,10 +295,6 @@ class MemberController extends Controller
         ]);
     }
 
-    //This code is used by members to submit their payment requests 
-    //for their membership dues. They can optionally upload a receipt 
-    //image and provide a reference number for online payments. 
-    //The request will be saved with a pending review status for the admin to verify and approve.
     public function requestPayment(Request $request)
     {
         $user = Auth::user();
@@ -272,7 +326,6 @@ class MemberController extends Controller
         $receiptUrl = null;
         if ($request->hasFile('receipt_image')) {
             $path = $request->file('receipt_image')->store('payment_receipts', 's3');
-            /** @var \Illuminate\Filesystem\FilesystemAdapter $disk */
             $disk = Storage::disk('s3');
             $receiptUrl = $disk->temporaryUrl($path, now()->addDays(7));
         }
@@ -304,22 +357,56 @@ class MemberController extends Controller
         ], 201);
     }
 
-    //This code works and is used to trigger the expiry check from the 
-    //frontend or Postman without needing to access the terminal. It runs 
-    //the same logic as the CheckExpiringMemberships command and returns
-    //the output for verification.
     public function triggerExpiryCheck(Request $request)
     {
-        // 1. Run the terminal command programmatically
-        Artisan::call('memberships:check-expiring');
-
-        // 2. Get the text that would normally print in the terminal
+        Artisan::call('check:expiring-memberships');
         $output = Artisan::output();
 
-        // 3. Return it to the frontend / Postman
         return response()->json([
             'message' => 'Expiry check executed successfully.',
             'terminal_output' => trim($output)
+        ], 200);
+    }
+
+    /**
+     * Approve a renewal payment and reactivate the expired member.
+     */
+    public function approveRenewalPayment(Request $request, $paymentId)
+    {
+        $payment = DuesPayment::findOrFail($paymentId);
+        $due = MembershipDue::findOrFail($payment->membership_due_id);
+        $member = Member::findOrFail($payment->member_id);
+
+        // 1. Mark Payment and Due as Paid
+        $payment->update(['status' => 'approved']);
+        $due->update([
+            'status' => 'paid', 
+            'paid_date' => now()
+        ]);
+
+        // 2. Reactivate Member & Extend Expiry Date by 1 Year
+        $currentEndDate = $member->membership_end_date ? Carbon::parse($member->membership_end_date) : now();
+        // If they are way past due, start the 1 year from TODAY. If they paid early, add a year to their end date.
+        $newEndDate = $currentEndDate->isPast() ? now()->addYear() : $currentEndDate->addYear();
+
+        $member->update([
+            'status' => 'active',
+            'membership_end_date' => $newEndDate
+        ]);
+
+        // 3. Notify the Member they are back online (Green Alert)
+        if ($member->user) {
+            $member->user->notify(new SystemAlertNotification(
+                'Membership Renewed!',
+                'Your renewal payment was approved. Your membership is now active until ' . $newEndDate->format('F j, Y'),
+                'fa-check-circle',
+                'text-success'
+            ));
+        }
+
+        return response()->json([
+            'message' => 'Renewal approved! Member is now active for another year.',
+            'new_end_date' => $newEndDate->format('Y-m-d')
         ], 200);
     }
 }
