@@ -10,9 +10,6 @@ use App\Http\Resources\ApplicantResource;
 use Illuminate\Support\Facades\Storage;
 // use App\Services\MailtrapApiService;
 use Illuminate\Support\Facades\Mail; 
-use App\Notifications\SystemAlertNotification;
-use App\Models\User;
-use Illuminate\Support\Facades\Notification;
 
 class ApplicantController extends Controller
 {
@@ -107,7 +104,7 @@ class ApplicantController extends Controller
             $treasurers = \App\Models\User::role('treasurer')->get();
             \Illuminate\Support\Facades\Notification::send($treasurers, new \App\Notifications\SystemAlertNotification(
                 'New Approval for Review',
-                "Admin {$actorName} approved {$businessName}. Please review their Proof of Payment.",
+                "{$actorName} approved {$businessName}. Please review their Proof of Payment.",
                 'fa-user-check',
                 'text-primary'
             ));
@@ -125,7 +122,7 @@ class ApplicantController extends Controller
             $admins = \App\Models\User::role(['admin', 'super_admin'])->get();
             \Illuminate\Support\Facades\Notification::send($admins, new \App\Notifications\SystemAlertNotification(
                 'Payment Verified',
-                "Treasurer {$actorName} verified payment for {$businessName}. They are now approved and ready for member account creation.",
+                "{$actorName} verified payment for {$businessName}. They are now approved and ready for member account creation.",
                 'fa-check-circle',
                 'text-success'
             ));
@@ -136,7 +133,7 @@ class ApplicantController extends Controller
             $admins = \App\Models\User::role(['admin', 'super_admin'])->get();
             \Illuminate\Support\Facades\Notification::send($admins, new \App\Notifications\SystemAlertNotification(
                 'Application Rejected',
-                "Treasurer {$actorName} rejected the payment proof for {$businessName}.",
+                "{$actorName} rejected the payment proof for {$businessName}.",
                 'fa-times-circle',
                 'text-danger'
             ));
@@ -152,12 +149,12 @@ class ApplicantController extends Controller
             ));
         }
 
-        // 4. Expired -> Notify Admin (YELLOW / text-warning)
-        if ($oldStatus !== 'expired' && $newStatus === 'expired') {
+        // 4. Inactive -> Notify Admin (YELLOW / text-warning)
+        if ($oldStatus !== 'inactive' && $newStatus === 'inactive') {
             $admins = \App\Models\User::role(['admin', 'super_admin'])->get();
             \Illuminate\Support\Facades\Notification::send($admins, new \App\Notifications\SystemAlertNotification(
-                'Application Expired',
-                "The application for {$businessName} has expired.",
+                'Application Inactive',
+                "The application for {$businessName} has become inactive.",
                 'fa-exclamation-triangle',
                 'text-warning'
             ));

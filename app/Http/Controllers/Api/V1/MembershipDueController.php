@@ -17,7 +17,7 @@ class MembershipDueController extends Controller
      * Query Parameters:
      * - member_id: Filter by member
      * - due_year: Filter by year
-     * - status: Filter by status (pending, paid, overdue, waived, expired)
+     * - status: Filter by status (pending, paid, overdue, waived, inactive)
      */
     public function index(Request $request)
     {
@@ -106,7 +106,7 @@ class MembershipDueController extends Controller
         }
 
         $validated = $request->validate([
-            'status' => ['nullable', 'in:pending,paid,overdue,waived,expired'],
+            'status' => ['nullable', 'in:pending,paid,overdue,waived,inactive'],
             'notes' => ['nullable', 'string', 'max:500'],
         ]);
 
