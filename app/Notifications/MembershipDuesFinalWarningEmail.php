@@ -2,49 +2,60 @@
 
 namespace App\Notifications;
 
-use App\Models\MembershipDue;
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use Illuminate\Notifications\Messages\MailMessage;
 
-/**
- * Email notification for membership dues expiration - Final Warning (1 month before)
- * 
- * SET ASIDE: Enable by uncommenting "implements ShouldQueue" to queue emails
- */
 class MembershipDuesFinalWarningEmail extends Notification
 {
     use Queueable;
+    
+    public $member;
 
-    protected $membershipDue;
-
-    public function __construct(MembershipDue $membershipDue)
+    public function __construct($member)
     {
-        $this->membershipDue = $membershipDue;
+        $this->member = $member;
     }
 
-    public function via(object $notifiable): array
+    public function via($notifiable)
     {
-        return ['mail'];
+        return ['mail', 'database'];
     }
 
-    public function toMail(object $notifiable): MailMessage
+    protected function getBusinessName()
     {
-        $member = $this->membershipDue->member;
-        $expirationDate = $member->membership_end_date->format('F d, Y');
-        $remainingDays = now()->diffInDays($member->membership_end_date);
+        $applicant = $this->member->applicant;
+        if (!$applicant) return 'Member';
+
+        $profile = $applicant->basic_profile;
+        if (is_string($profile)) $profile = json_decode($profile, true);
+
+        if (is_array($profile) && !empty($profile['registered_business_name'])) return $profile['registered_business_name'];
+        if (is_object($profile) && !empty($profile->registered_business_name)) return $profile->registered_business_name;
+
+        return trim(($applicant->rep_first_name ?? '') . ' ' . ($applicant->rep_surname ?? '')) ?: 'Member';
+    }
+
+    public function toMail($notifiable)
+    {
+        $businessName = $this->getBusinessName();
+        $expirationDate = $this->member->membership_end_date ? $this->member->membership_end_date->format('F d, Y') : 'soon';
 
         return (new MailMessage)
-            ->subject('❗ URGENT: Membership Expiring - Final Notice')
-            ->greeting("Hello {$member->applicant->contact_person_name},")
-            ->line("Your PCCI membership will expire very soon!")
-            ->line("**URGENT:** Only {$remainingDays} days left ({$expirationDate})")
-            ->line("**Amount Due:** ₱" . number_format($this->membershipDue->amount, 2))
-            ->line("")
-            ->line("**This is your final notice.** Please renew immediately to avoid membership suspension.")
-            ->action('Renew Immediately', config('app.frontend_url') . '/renew-membership')
-            ->line("After expiration date, your membership may be suspended.")
-            ->salutation('Best regards, PCCI');
+            ->subject('URGENT: Membership Expiring - Final Notice')
+            ->view('emails.membership_expiry', [
+                'memberName' => $businessName,
+                'expiryDate' => $expirationDate
+            ]);
+    }
+    
+    public function toDatabase($notifiable)
+    {
+        return [
+            'title'   => 'URGENT: Membership Expiring',
+            'message' => "Your membership expires in 1 month. Renew immediately.",
+            'icon'    => 'fa-times-circle',
+            'tone'    => 'text-danger'
+        ];
     }
 }

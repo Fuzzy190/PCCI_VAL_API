@@ -4,99 +4,109 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use App\Models\Member;
-use Illuminate\Support\Facades\Mail;
+use App\Notifications\MembershipDuesFirstWarningEmail;
+use App\Notifications\MembershipDuesSecondWarningEmail;
+use App\Notifications\MembershipDuesFinalWarningEmail;
+use App\Notifications\MembershipDuesInactiveNoticeEmail;
 use Carbon\Carbon;
 
 class CheckExpiringMemberships extends Command
 {
-    // The command you will type in terminal to run this
     protected $signature = 'memberships:check-expiring';
-    protected $description = 'Check for expiring memberships and send 3 warnings (3, 2, 1 months) before expiration via Gmail SMTP';
+    protected $description = 'Check for expiring memberships and report warning/inactive counts.';
 
-    public function handle()
+    /**
+     * Bulletproof method to extract the applicant's email address
+     */
+    private function getMemberEmail($member)
     {
-        $now = Carbon::now();
+        $applicant = $member->applicant;
         
-        // Find all active members who have an expiration date
-        $members = Member::with('user')->whereNotNull('membership_end_date')->where('status', 'active')->get();
+        if (!$applicant) {
+            return null;
+        }
 
-        $emailsSent = 0;
+        if (!empty($applicant->email)) return $applicant->email;
 
-        foreach ($members as $member) {
-            $endDate = Carbon::parse($member->membership_end_date);
-            $user = $member->user;
+        $profile = $applicant->basic_profile;
+        if (is_string($profile)) $profile = json_decode($profile, true);
 
-            // Skip if no user is attached
-            if (!$user) continue;
+        if (is_array($profile) && !empty($profile['email'])) return $profile['email'];
+        if (is_object($profile) && !empty($profile->email)) return $profile->email;
 
-            $sendEmail = false;
-            $isExpired = false;
-            $monthsUntil = 0;
-
-            // CONDITION 1: Expiring in exactly 3 Months
-            if ($now->isSameDay($endDate->copy()->subMonths(3))) {
-                 $sendEmail = true;
-                 $isExpired = false;
-                 $monthsUntil = 3;
-            }
-            // CONDITION 2: Expiring in exactly 2 Months
-            elseif ($now->isSameDay($endDate->copy()->subMonths(2))) {
-                 $sendEmail = true;
-                 $isExpired = false;
-                 $monthsUntil = 2;
-            }
-            // CONDITION 3: Expiring in exactly 1 Month
-            elseif ($now->isSameDay($endDate->copy()->subMonth())) {
-                 $sendEmail = true;
-                 $isExpired = false;
-                 $monthsUntil = 1;
-            } 
-            // CONDITION 4: Expiring Today or Already Past
-            elseif ($now->greaterThanOrEqualTo($endDate)) {
-                 $sendEmail = true;
-                 $isExpired = true;
-                 $monthsUntil = 0;
-                 
-                 // Update their status to expired in the database
-                 $member->update(['status' => 'expired']);
-            }
-
-            // ==================== SEND GMAIL SMTP EMAIL ====================
-            if ($sendEmail) {
-                $memberName = $user->first_name . ' ' . $user->last_name;
-                
-                $emailData = [
-                    'memberName' => $memberName,
-                    'isExpired' => $isExpired,
-                    'expiryDate' => $endDate->format('F j, Y'),
-                    'monthsUntil' => $monthsUntil
-                ];
-
-                try {
-                    Mail::send('emails.membership_expiry', $emailData, function($message) use ($user, $memberName, $isExpired, $monthsUntil) {
-                        
-                        // Dynamically set subject based on warning stage
-                        if ($isExpired) {
-                            $subject = 'Action Required: PCCI Membership Expired';
-                        } else {
-                            $monthText = $monthsUntil > 1 ? 'Months' : 'Month';
-                            $subject = "Reminder: PCCI Membership Expiring in {$monthsUntil} {$monthText}";
-                        }
-                            
-                        $message->to($user->email, $memberName)
-                                ->subject($subject);
-                    });
-                    
-                    $emailsSent++;
-                    $this->info("Expiry email ({$monthsUntil} months warning) sent successfully to: {$user->email}");
-                    
-                } catch (\Exception $e) {
-                    \Log::error("Failed to send expiry email to {$user->email}: " . $e->getMessage());
-                    $this->error("Failed to send email to: {$user->email}");
-                }
+        $rawProfile = $applicant->getAttributes()['basic_profile'] ?? null;
+        if (is_string($rawProfile)) {
+            $decoded = json_decode($rawProfile, true);
+            if (is_array($decoded) && !empty($decoded['email'])) {
+                return $decoded['email'];
             }
         }
+
+        return null;
+    }
+
+    public function handle(): void
+    {
+        $today = Carbon::now()->startOfDay();
+
+        // Target Dates formatting to ensure perfect matching
+        $target3Months = $today->copy()->addMonths(3)->format('Y-m-d');
+        $target2Months = $today->copy()->addMonths(2)->format('Y-m-d');
+        $target1Month  = $today->copy()->addMonths(1)->format('Y-m-d');
         
-        $this->info("Membership check complete. Total emails sent: {$emailsSent}");
+        // Target for ALREADY EXPIRED (Exactly 1 day ago so we don't spam them every day)
+        $targetInactive = $today->copy()->subDay()->format('Y-m-d');
+
+        $firstWarningCount   = 0;
+        $secondWarningCount  = 0;
+        $thirdWarningCount   = 0;
+        $inactiveNoticeCount = 0;
+
+        // 1. Send 1st Warning (3 Months Before)
+        $membersExpiringIn3Months = Member::with('applicant')->whereDate('membership_end_date', $target3Months)->get();
+        foreach ($membersExpiringIn3Months as $member) {
+            if ($this->getMemberEmail($member)) {
+                $member->notify(new MembershipDuesFirstWarningEmail($member));
+                $firstWarningCount++;
+            }
+        }
+
+        // 2. Send 2nd Warning (2 Months Before)
+        $membersExpiringIn2Months = Member::with('applicant')->whereDate('membership_end_date', $target2Months)->get();
+        foreach ($membersExpiringIn2Months as $member) {
+            if ($this->getMemberEmail($member)) {
+                $member->notify(new MembershipDuesSecondWarningEmail($member));
+                $secondWarningCount++;
+            }
+        }
+
+        // 3. Send 3rd Warning (1 Month Before)
+        $membersExpiringIn1Month = Member::with('applicant')->whereDate('membership_end_date', $target1Month)->get();
+        foreach ($membersExpiringIn1Month as $member) {
+            if ($this->getMemberEmail($member)) {
+                $member->notify(new MembershipDuesFinalWarningEmail($member));
+                $thirdWarningCount++;
+            }
+        }
+
+        // 4. Send Inactive Notice (Exactly 1 Day After Expiration)
+        $membersAlreadyInactive = Member::with('applicant')->whereDate('membership_end_date', $targetInactive)->get();
+        foreach ($membersAlreadyInactive as $member) {
+            if ($this->getMemberEmail($member)) {
+                $member->notify(new MembershipDuesInactiveNoticeEmail($member));
+                $inactiveNoticeCount++;
+            }
+        }
+
+        $totalInactiveCount = Member::where('status', 'inactive')->count();
+
+        // Final Console Output
+        $this->info('--- Membership Expiration Check Complete ---');
+        $this->line("1st Warning Count: {$firstWarningCount}");
+        $this->line("2nd Warning Count: {$secondWarningCount}");
+        $this->line("3rd Warning Count: {$thirdWarningCount}");
+        $this->line("Inactive Notices Sent Today: {$inactiveNoticeCount}");
+        $this->line("--------------------------------------------");
+        $this->info("Total Inactive Members in System: {$totalInactiveCount}");
     }
 }

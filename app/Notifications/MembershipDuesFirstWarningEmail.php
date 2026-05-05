@@ -9,7 +9,7 @@ use Illuminate\Notifications\Messages\MailMessage;
 class MembershipDuesFirstWarningEmail extends Notification
 {
     use Queueable;
-
+    
     public $member;
 
     public function __construct($member)
@@ -17,31 +17,50 @@ class MembershipDuesFirstWarningEmail extends Notification
         $this->member = $member;
     }
 
-    // 1. THIS IS THE MAGIC LINE: Tell Laravel to trigger BOTH channels
     public function via($notifiable)
     {
-        return ['mail', 'database']; 
+        return ['mail', 'database'];
     }
 
-    // 2. The Email Payload (Sent via SMTP/Resend)
+    protected function getBusinessName()
+    {
+        $applicant = $this->member->applicant;
+        if (!$applicant) return 'Member';
+
+        $profile = $applicant->basic_profile;
+        if (is_string($profile)) {
+            $profile = json_decode($profile, true);
+        }
+
+        if (is_array($profile) && !empty($profile['registered_business_name'])) {
+            return $profile['registered_business_name'];
+        }
+
+        if (is_object($profile) && !empty($profile->registered_business_name)) {
+            return $profile->registered_business_name;
+        }
+
+        return trim(($applicant->rep_first_name ?? '') . ' ' . ($applicant->rep_surname ?? '')) ?: 'Member';
+    }
+
     public function toMail($notifiable)
     {
+        $businessName = $this->getBusinessName();
+        $expirationDate = $this->member->membership_end_date ? $this->member->membership_end_date->format('F d, Y') : 'soon';
+
         return (new MailMessage)
-                    ->subject('First Warning: Membership Expiring Soon')
-                    ->greeting('Hello ' . $this->member->applicant->basic_profile->registered_business_name)
-                    ->line('Your membership will expire in 30 days.')
-                    ->action('Renew Now', url('/renew'))
-                    ->line('Thank you for being a valued member!');
+            ->subject('First Warning: Membership Expiring Soon')
+            ->view('emails.membership_expiry', [
+                'memberName' => $businessName,
+                'expiryDate' => $expirationDate
+            ]);
     }
 
-    // 3. The In-App Payload (Saved to the new 'notifications' table)
     public function toDatabase($notifiable)
     {
-        $businessName = $this->member->applicant->basic_profile->registered_business_name ?? 'A member';
-
         return [
             'title'   => 'Membership Expiring Soon',
-            'message' => "{$businessName}'s membership expires in 30 days.",
+            'message' => "Your membership expires in 3 months.",
             'icon'    => 'fa-exclamation-triangle',
             'tone'    => 'text-warning'
         ];

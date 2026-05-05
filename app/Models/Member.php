@@ -4,10 +4,11 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Notifications\Notifiable;
 
 class Member extends Model
 {
-    use HasFactory;
+    use HasFactory, Notifiable;
 
     protected $fillable = [
         'applicant_id',
@@ -50,12 +51,55 @@ class Member extends Model
     }
 
     /**
+     * Tell Laravel exactly where to send the email for this specific member.
+     * This uses the same bulletproof JSON extraction we built for the command.
+     */
+    public function routeNotificationForMail($notification)
+    {
+        $applicant = $this->applicant;
+        
+        if (!$applicant) {
+            return null;
+        }
+
+        // Method 1: Check if 'email' is a flat column
+        if (!empty($applicant->email)) {
+            return $applicant->email;
+        }
+
+        // Method 2: Check inside 'basic_profile'
+        $profile = $applicant->basic_profile;
+        if (is_string($profile)) {
+            $profile = json_decode($profile, true);
+        }
+
+        if (is_array($profile) && !empty($profile['email'])) {
+            return $profile['email'];
+        }
+
+        if (is_object($profile) && !empty($profile->email)) {
+            return $profile->email;
+        }
+
+        // Method 3: Check raw database attributes
+        $rawProfile = $applicant->getAttributes()['basic_profile'] ?? null;
+        if (is_string($rawProfile)) {
+            $decoded = json_decode($rawProfile, true);
+            if (is_array($decoded) && !empty($decoded['email'])) {
+                return $decoded['email'];
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Check and update member status based on dues payment
      * 
      * Rules:
-     * - If current year dues are paid → status = 'active'
-     * - If current year dues are overdue → status = 'inactive' 
-     * - If no dues exist for current year → status = 'pending'
+     * - If current year dues are paid -> status = 'active'
+     * - If current year dues are overdue -> status = 'inactive' 
+     * - If no dues exist for current year -> status = 'pending'
      */
     public function updateMembershipStatus()
     {
@@ -102,5 +146,4 @@ class Member extends Model
             ->where('due_date', '<', now())
             ->exists();
     }
-
 }

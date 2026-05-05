@@ -176,17 +176,22 @@ class MemberController extends Controller
         if ($request->filled('induction_date')) {
             $inductionDate = Carbon::parse($request->induction_date);
             $membershipType = MembershipType::findOrFail($member->membership_type_id);
-            $membershipEndDate = $inductionDate->copy()->addMonths($membershipType->duration_in_months ?? 12);
- 
-            $status = $membershipEndDate->isPast() ? 'inactive' : 'active';
+            
+            // Calculate the anniversary date based on duration
+            $duration = $membershipType->duration_in_months ?? 12;
+            $membershipEndDate = $inductionDate->copy()->addMonths($duration);
+            
+            // Determine status based on the NEW end date
+            $newStatus = $membershipEndDate->isPast() ? 'inactive' : 'active';
 
+            // 1. Update the Member record
             $member->update([
                 'induction_date' => $inductionDate,
                 'membership_end_date' => $membershipEndDate,
-                'status' => $status,
+                'status' => $newStatus, // Force the status here
             ]);
 
-            // SYNC THE DUE DATE WITH THE NEW INDUCTION DATE
+            // 2. Sync the Pending Due
             $pendingDue = $member->membershipDues()->where('status', 'pending')->first();
             if ($pendingDue) {
                 $pendingDue->update([
@@ -195,13 +200,20 @@ class MemberController extends Controller
                 ]);
             }
 
-            if ($status === 'inactive') {
+            // 3. FINAL OVERRIDE
+            // We call save again specifically for the status to ensure 
+            // no observers flipped it back to 'pending' during the process.
+            $member->status = $newStatus;
+            $member->save();
+
+            // 4. Handle Inactive Notifications
+            if ($newStatus === 'inactive') {
                 $admins = User::role(['admin', 'super_admin'])->get();
-                $businessName = $member->applicant->basic_profile['registered_business_name'] ?? 'A member';
+                $businessName = data_get($member, 'applicant.registered_business_name', 'A member');
                 
                 Notification::send($admins, new SystemAlertNotification(
                     'Membership Inactive',
-                    "{$businessName}'s membership has become inactive based on the updated induction date.",
+                    "{$businessName}'s membership is now inactive based on the updated induction date.",
                     'fa-exclamation-triangle',
                     'text-warning'
                 ));
@@ -209,13 +221,14 @@ class MemberController extends Controller
                 if ($member->user) {
                     $member->user->notify(new SystemAlertNotification(
                         'Membership Inactive',
-                        'Your PCCI membership has become inactive based on your induction date. Please process your renewal.',
+                        'Your PCCI membership has become inactive. Please process your renewal.',
                         'fa-clock',
                         'text-warning'
                     ));
                 }
             }
         }
+
         return new MemberResource($member->fresh());
     }
 

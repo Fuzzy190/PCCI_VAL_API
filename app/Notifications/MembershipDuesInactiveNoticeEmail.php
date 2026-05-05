@@ -6,7 +6,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Notification;
 use Illuminate\Notifications\Messages\MailMessage;
 
-class MembershipDuesSecondWarningEmail extends Notification
+class MembershipDuesInactiveNoticeEmail extends Notification
 {
     use Queueable;
     
@@ -39,10 +39,10 @@ class MembershipDuesSecondWarningEmail extends Notification
     public function toMail($notifiable)
     {
         $businessName = $this->getBusinessName();
-        $expirationDate = $this->member->membership_end_date ? $this->member->membership_end_date->format('F d, Y') : 'soon';
+        $expirationDate = $this->member->membership_end_date ? $this->member->membership_end_date->format('F d, Y') : 'recently';
 
         return (new MailMessage)
-            ->subject('Membership Renewal Reminder - Second Notice')
+            ->subject('Notice: Your PCCI Membership is now Inactive')
             ->view('emails.membership_expiry', [
                 'memberName' => $businessName,
                 'expiryDate' => $expirationDate
@@ -52,10 +52,10 @@ class MembershipDuesSecondWarningEmail extends Notification
     public function toDatabase($notifiable)
     {
         return [
-            'title'   => 'Membership Renewal Reminder',
-            'message' => "Your membership expires in 2 months.",
-            'icon'    => 'fa-exclamation-circle',
-            'tone'    => 'text-warning'
+            'title'   => 'Membership Inactive',
+            'message' => "Your membership has officially become inactive. Please renew.",
+            'icon'    => 'fa-lock',
+            'tone'    => 'text-danger'
         ];
     }
 }
