@@ -376,7 +376,7 @@ class MemberController extends Controller
 
     public function triggerExpiryCheck(Request $request)
     {
-        Artisan::call('check:expiring-memberships');
+        Artisan::call('memberships:check-expiring');
         $output = Artisan::output();
 
         return response()->json([
