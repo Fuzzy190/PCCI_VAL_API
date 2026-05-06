@@ -27,6 +27,7 @@ use App\Http\Controllers\Api\V1\UserController;
 use App\Http\Controllers\Api\V1\FileUploadController;
 use App\Http\Controllers\Api\V1\SystemController;
 use App\Http\Controllers\Api\V1\NotificationController;
+use App\Http\Controllers\Api\V1\TransactionController;
 use App\Notifications\SystemAlertNotification;
 
 // Auth Controllers
@@ -197,6 +198,10 @@ Route::middleware(['auth:sanctum'])->group(function() {
         // ---------------------------------------------------------------------
         Route::middleware(['role:super_admin|admin|treasurer'])->group(function(){
             
+            // --> ADD THESE TWO LINES FOR TRANSACTIONS <--
+            Route::get('v1/transactions', [TransactionController::class, 'index']);
+            Route::get('v1/transactions/stats', [TransactionController::class, 'getStats']);
+
             Route::apiResource('v1/payments', PaymentController::class);
 
             Route::apiResource('v1/membership-dues', MembershipDueController::class)->except(['store', 'destroy']);

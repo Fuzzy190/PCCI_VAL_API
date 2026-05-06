@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 
-class NotificationController extends Controller
+class NotificationController extends Controller 
 {
     // Fetch notifications for the logged-in user
     public function index(Request $request)
@@ -14,8 +14,8 @@ class NotificationController extends Controller
 
         return response()->json([
             'unread_count'  => $user->unreadNotifications->count(),
-            // Get the 50 most recent notifications
-            'notifications' => $user->notifications()->take(50)->get() 
+            // Increased to 100 to ensure all 65+ migrated members show up
+            'notifications' => $user->notifications()->take(100)->get() 
         ]);
     }
 
@@ -23,9 +23,11 @@ class NotificationController extends Controller
     public function markAsRead(Request $request, $id)
     {
         $notification = $request->user()->notifications()->find($id);
+
         if ($notification) {
             $notification->markAsRead();
         }
+
         return response()->json(['message' => 'Notification marked as read']);
     }
 
@@ -33,6 +35,7 @@ class NotificationController extends Controller
     public function markAllAsRead(Request $request)
     {
         $request->user()->unreadNotifications->markAsRead();
+
         return response()->json(['message' => 'All notifications marked as read']);
     }
 
@@ -40,6 +43,7 @@ class NotificationController extends Controller
     public function clearAll(Request $request)
     {
         $request->user()->notifications()->delete();
+
         return response()->json(['message' => 'Notification history cleared']);
     }
 }

@@ -8,6 +8,7 @@ use App\Http\Resources\DuesPaymentResource;
 use App\Models\DuesPayment;
 use App\Models\MembershipDue;
 use Illuminate\Http\Request;
+use App\Models\Transaction;
 
 class DuesPaymentController extends Controller
 {
@@ -66,7 +67,7 @@ class DuesPaymentController extends Controller
         $validated = $request->validated();
         $membershipDue = MembershipDue::find($validated['membership_due_id']);
 
-        // Validate payment
+        // Validate payment[cite: 6]
         $errors = DuesPayment::validatePayment($membershipDue, $validated);
         if (!empty($errors)) {
             return response()->json([
@@ -75,7 +76,7 @@ class DuesPaymentController extends Controller
             ], 422);
         }
 
-        // Record the payment
+        // Record the payment[cite: 6]
         $success = DuesPayment::recordPayment(
             $membershipDue,
             $request->user(),
@@ -89,9 +90,23 @@ class DuesPaymentController extends Controller
             ], 422);
         }
 
+        // Fetch the newly created payment[cite: 6]
         $payment = DuesPayment::where('membership_due_id', $membershipDue->id)
             ->where('or_number', $validated['or_number'])
             ->first();
+
+        // AUTOMATICALLY CREATE GLOBAL TRANSACTION
+        Transaction::create([
+            'or_number' => $validated['or_number'],
+            'transaction_type' => 'renewal',             // Matches your enum[cite: 5]
+            'member_id' => $membershipDue->member_id,    // Link to member[cite: 5]
+            'membership_due_id' => $membershipDue->id,   // Link to specific due[cite: 5]
+            'amount' => $validated['amount'],
+            'payment_method' => $validated['payment_method'] ?? 'cash',
+            'status' => 'approved',
+            'processed_by_user_id' => auth()->id(),
+            'notes' => 'Generated automatically from membership renewal payment.',
+        ]);
 
         return new DuesPaymentResource($payment->load(['membershipDue', 'member', 'receivedBy']));
     }

@@ -12,12 +12,12 @@ class DatabaseSeeder extends Seeder
             MembershipTypeSeeder::class,
             RoleSeeder::class,
             SuperAdminSeeder::class,
-
             ApplicantSeeder::class,
             MemberSeeder::class,
             UserMemberSeeder::class,
-
             PaymentChannelSeeder::class,
+            TransactionSeeder::class,
+            NotificationSeeder::class,
         ]);
     }
 }
