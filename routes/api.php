@@ -202,6 +202,12 @@ Route::middleware(['auth:sanctum'])->group(function() {
             Route::get('v1/transactions', [TransactionController::class, 'index']);
             Route::get('v1/transactions/stats', [TransactionController::class, 'getStats']);
 
+            // POST ==>> Approve member renewal payments
+            Route::post('v1/members/approve-renewal-payment/{paymentId}', [MemberController::class, 'approveRenewalPayment']);
+            
+            // POST ==>> Reject member renewal payments
+            Route::post('v1/members/reject-renewal-payment/{paymentId}', [MemberController::class, 'rejectRenewalPayment']);
+
             Route::apiResource('v1/payments', PaymentController::class);
 
             Route::apiResource('v1/membership-dues', MembershipDueController::class)->except(['store', 'destroy']);

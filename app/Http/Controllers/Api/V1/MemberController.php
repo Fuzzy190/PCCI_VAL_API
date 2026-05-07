@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\Applicant;
-use App\Models\Member;
 use App\Models\MembershipDue;
 use App\Models\MembershipType;
 use App\Models\Payment;
@@ -17,6 +16,8 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Auth;
 use App\Http\Resources\MembershipDueResource;
 use App\Http\Resources\DuesPaymentResource;
+use App\Models\Transaction; // We added this earlier
+use App\Models\Member;
 use Carbon\Carbon;
 
 use App\Models\User;
@@ -248,14 +249,23 @@ class MemberController extends Controller
         return MembershipDueResource::collection($dues);
     }
 
-    public function getMyPayments()
+    /**
+     * Fetch the member's personal transaction history
+     * GET /api/v1/member/payments
+     */
+    public function getMyPayments(Request $request)
     {
-        $user = Auth::user();
-        $member = $user->member;
-        if (!$member) return response()->json(['message' => 'Member not found'], 404);
+        $member = $request->user()->member;
 
-        $payments = DuesPayment::where('member_id', $member->id)->with('membershipDue')->get();
-        return DuesPaymentResource::collection($payments);
+        if (!$member) return response()->json([]);
+
+        // Fetch ONLY this member's transactions, newest first
+        $transactions = Transaction::where('member_id', $member->id)
+            ->orWhere('applicant_id', $member->applicant_id) // Catch their initial registration too!
+            ->latest()
+            ->get();
+
+        return response()->json($transactions);
     }
 
     public function getMyProfile()
@@ -264,8 +274,9 @@ class MemberController extends Controller
         $member = $user->member;
         if (!$member) return response()->json(['message' => 'You are not registered as a member'], 404);
 
+        // FIX: We MUST include 'applicant' here so the frontend receives the Business Name!
         return response()->json([
-            'member' => new MemberResource($member->load(['membershipType', 'membershipDues', 'user'])),
+            'member' => new MemberResource($member->load(['membershipType', 'membershipDues', 'user', 'applicant'])),
             'membership_status' => $member->status,
             'membership_end_date' => $member->membership_end_date,
             'has_active_dues' => $member->hasPaidCurrentYearDues(),
@@ -311,67 +322,46 @@ class MemberController extends Controller
         ]);
     }
 
+    /**
+     * Submit a proof of payment for Renewal
+     * POST /api/v1/member/request-payment
+     */
     public function requestPayment(Request $request)
     {
-        $user = Auth::user();
-        $member = $user->member;
-        if (!$member) return response()->json(['message' => 'Member not found'], 404);
-
-        $validated = $request->validate([
-            'membership_due_id' => 'nullable|exists:membership_dues,id',
-            'amount' => 'required|numeric|min:1',
-            'payment_method' => 'required|in:cash,check,transfer,online,gcash',
-            'reference_number' => 'nullable|string|max:100',
-            'notes' => 'nullable|string|max:500',
-            'receipt_image' => 'nullable|image|max:10240',
+        $request->validate([
+            'payment_method' => 'required|string',
+            'proof_of_payment' => 'required|image|max:5000', // Max 5MB
         ]);
 
-        if (!empty($validated['membership_due_id'])) {
-            $due = MembershipDue::find($validated['membership_due_id']);
-        } else {
-            // Find the OLDEST pending due to ensure chronological payment
-            $due = $member->membershipDues()
-                ->where('status', 'pending')
-                ->orderBy('due_date', 'asc')
-                ->first();
+        $user = $request->user();
+        $member = $user->member;
+
+        if (!$member) {
+            return response()->json(['message' => 'Membership record not found.'], 404);
         }
 
-        if (!$due) return response()->json(['message' => 'No unpaid membership due found for this member.'], 404);
-        if ($due->member_id !== $member->id) return response()->json(['message' => 'Unauthorized: Due does not belong to you'], 403);
-        if ($due->status === 'paid') return response()->json(['message' => 'This membership due is already paid'], 422);
+        // 1. Upload the image
+        $path = $request->file('proof_of_payment')->store('proofs/renewals', 'public');
 
-        $receiptUrl = null;
-        if ($request->hasFile('receipt_image')) {
-            $path = $request->file('receipt_image')->store('payment_receipts', 's3');
-            $disk = Storage::disk('s3');
-            $receiptUrl = $disk->temporaryUrl($path, now()->addDays(7));
-        }
+        // 2. Determine the correct renewal price
+        $type = $member->membershipType;
+        $amount = $type->renewal_price ? $type->renewal_price : $type->price;
 
-        $referenceNumber = $validated['reference_number'] ?? null;
-        if ($referenceNumber && DuesPayment::where('reference_number', $referenceNumber)->exists()) {
-            return response()->json(['message' => 'Reference number already exists. Please use a unique identifier.'], 422);
-        }
-
-        $orNumber = 'REQ-' . strtoupper(Str::random(8));
-
-        $paymentRequest = DuesPayment::create([
-            'membership_due_id' => $due->id,    
+        // 3. Create the PENDING transaction in the Master Ledger
+        $transaction = Transaction::create([
+            'transaction_type' => 'renewal',
             'member_id' => $member->id,
-            'submitted_by_user_id' => $user->id,
-            'or_number' => $orNumber,
-            'amount' => $validated['amount'],
-            'payment_date' => now()->toDateString(),
-            'payment_method' => $validated['payment_method'],
-            'reference_number' => $referenceNumber,
-            'notes' => $validated['notes'] ?? null,
-            'receipt_image_url' => $receiptUrl,
-            'status' => 'pending_review',
+            'amount' => $amount,
+            'payment_method' => $request->payment_method,
+            'status' => 'pending', // This makes it show up for the Treasurer!
+            'proof_of_payment_path' => $path,
+            'notes' => 'Member submitted renewal via dashboard.',
         ]);
 
         return response()->json([
-            'message' => 'Payment request submitted',
-            'payment_request' => new DuesPaymentResource($paymentRequest->load(['membershipDue', 'member', 'submittedBy'])),
-        ], 201);
+            'message' => 'Renewal payment submitted successfully. Please wait for Treasurer approval.',
+            'transaction' => $transaction
+        ]);
     }
 
     public function triggerExpiryCheck(Request $request)
@@ -388,57 +378,138 @@ class MemberController extends Controller
     /**
      * Approve a renewal payment and reactivate the inactive member.
      */
-    public function approveRenewalPayment(Request $request, $paymentId)
+    public function approveRenewalPayment(Request $request, $identifier)
     {
-        $payment = DuesPayment::findOrFail($paymentId);
-        $due = MembershipDue::findOrFail($payment->membership_due_id);
-        $member = Member::findOrFail($payment->member_id);
+        // 1. Lookup the Payment or Transaction
+        $payment = \App\Models\DuesPayment::find($identifier);
+        $transaction = \App\Models\Transaction::find($identifier);
+        
+        $dueId = null;
+        $memberId = null;
+        $amount = 0;
 
-        // 1. Mark Payment and Due as Paid
-        $payment->update(['status' => 'approved']);
-        $due->update([
-            'status' => 'paid', 
-            'paid_date' => now()
-        ]);
+        if ($payment) {
+            $dueId = $payment->membership_due_id;
+            $memberId = $payment->member_id;
+            $amount = $payment->amount;
+            
+            $linkedTxn = \App\Models\Transaction::where('or_number', $payment->or_number)->first();
+            if ($linkedTxn) $transaction = $linkedTxn;
+            
+        } elseif ($transaction) {
+            $memberId = $transaction->member_id;
+            $dueId = $transaction->membership_due_id;
+            $amount = $transaction->amount;
+            
+            $payment = \App\Models\DuesPayment::where('or_number', $transaction->or_number)->first();
+            if ($payment && !$dueId) {
+                $dueId = $payment->membership_due_id;
+            }
+        }
 
+        if (!$dueId && $memberId) {
+            $pendingDue = \App\Models\MembershipDue::where('member_id', $memberId)->where('status', 'pending')->first();
+            if ($pendingDue) $dueId = $pendingDue->id;
+        }
+
+        if (!$dueId || !$memberId) {
+            return response()->json(['message' => 'Cannot process: Invalid renewal transaction. Missing due reference.'], 400);
+        }
+
+        $due = \App\Models\MembershipDue::findOrFail($dueId);
+        $member = \App\Models\Member::findOrFail($memberId);
+
+        // ==========================================
+        // AUTO-GENERATE OR NUMBER IF MISSING
+        // ==========================================
+        $existingOr = ($transaction && $transaction->or_number) ? $transaction->or_number : ($payment ? $payment->or_number : null);
+        $finalOrNumber = $existingOr ?: 'PCCI-OR-' . date('Y') . '-' . strtoupper(substr(uniqid(), -6));
+
+        // 3. Mark Everything as Approved and attach the OR Number
+        if ($transaction) {
+            $transaction->update(['status' => 'approved', 'or_number' => $finalOrNumber]);
+        }
+        if ($payment) {
+            $payment->update(['status' => 'approved', 'or_number' => $finalOrNumber]);
+        }
+        
+        \App\Models\DuesPayment::where('membership_due_id', $dueId)
+            ->whereIn('status', ['pending_review', 'pending'])
+            ->update(['status' => 'approved', 'or_number' => $finalOrNumber]);
+
+        $due->update(['status' => 'paid', 'paid_date' => now()]);
+
+        // 4. Reactivate Member
         $nextYear = $due->due_year + 1;
-
-        // 2. Reactivate Member & Extend Expiry Date strictly anchored to Induction Date
-        $induction = $member->induction_date ? Carbon::parse($member->induction_date) : now();
+        $induction = $member->induction_date ? \Carbon\Carbon::parse($member->induction_date) : now();
         $newEndDate = $induction->copy()->year($nextYear);
 
-        $member->update([
-            'status' => 'active',
-            'membership_end_date' => $newEndDate
-        ]);
+        $member->update(['status' => 'active', 'membership_end_date' => $newEndDate]);
 
-        // 3. Generate the next year's pending due perfectly on schedule
-        MembershipDue::updateOrCreate(
-            [
-                'member_id' => $member->id,
-                'due_year' => $nextYear,
-            ],
-            [
-                'amount' => $payment->amount, 
-                'due_date' => $newEndDate,
-                'status' => 'pending',
-                'notes' => 'Automatically generated for next billing cycle',
-            ]
+        // 5. Generate Next Year's Due
+        \App\Models\MembershipDue::updateOrCreate(
+            ['member_id' => $member->id, 'due_year' => $nextYear],
+            ['amount' => $amount, 'due_date' => $newEndDate, 'status' => 'pending', 'notes' => 'Automatically generated']
         );
 
-        // 4. Notify the Member
         if ($member->user) {
-            $member->user->notify(new SystemAlertNotification(
+            $member->user->notify(new \App\Notifications\SystemAlertNotification(
                 'Membership Renewed!',
-                'Your renewal payment was approved. Your membership is now active until ' . $newEndDate->format('F j, Y'),
+                'Your renewal payment was approved. OR Number: ' . $finalOrNumber . '. Your membership is now active until ' . $newEndDate->format('F j, Y'),
                 'fa-check-circle',
                 'text-success'
             ));
         }
 
-        return response()->json([
-            'message' => 'Renewal approved! Member is now active for another year.',
-            'new_end_date' => $newEndDate->format('Y-m-d')
-        ], 200);
+        return response()->json(['message' => 'Renewal approved! OR Generated.', 'or_number' => $finalOrNumber], 200);
+    }
+
+    /**
+     * Reject a renewal payment and notify the member.
+     */
+    public function rejectRenewalPayment(Request $request, $identifier)
+    {
+        $validated = $request->validate([
+            'rejection_reason' => 'required|string|max:255'
+        ]);
+
+        $payment = \App\Models\DuesPayment::find($identifier);
+        $transaction = \App\Models\Transaction::find($identifier);
+
+        $memberId = null;
+
+        if ($payment) {
+            $memberId = $payment->member_id;
+            $linkedTxn = \App\Models\Transaction::where('or_number', $payment->or_number)->first();
+            if ($linkedTxn) $transaction = $linkedTxn;
+        } elseif ($transaction) {
+            $memberId = $transaction->member_id;
+            $payment = \App\Models\DuesPayment::where('or_number', $transaction->or_number)->first();
+        }
+
+        if (!$memberId) {
+            return response()->json(['message' => 'Renewal payment record not found or invalid.'], 404);
+        }
+
+        $member = \App\Models\Member::find($memberId);
+
+        // Mark as rejected
+        if ($transaction) {
+            $transaction->update(['status' => 'rejected', 'notes' => 'Rejected: ' . $validated['rejection_reason']]);
+        }
+        if ($payment) {
+            $payment->update(['status' => 'rejected', 'notes' => 'Rejected: ' . $validated['rejection_reason']]);
+        }
+
+        if ($member && $member->user) {
+            $member->user->notify(new \App\Notifications\SystemAlertNotification(
+                'Renewal Payment Rejected',
+                'Your recent payment was rejected by the Treasurer. Reason: ' . $validated['rejection_reason'] . '. Please resubmit.',
+                'fa-times-circle',
+                'text-danger'
+            ));
+        }
+
+        return response()->json(['message' => 'Payment rejected successfully.'], 200);
     }
 }
