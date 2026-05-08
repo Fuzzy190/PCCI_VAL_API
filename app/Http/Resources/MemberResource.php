@@ -1,6 +1,7 @@
 <?php
 
 namespace App\Http\Resources;
+
 use App\Http\Resources\ApplicantResource;
 use App\Models\Member;
 use Illuminate\Http\Request;
@@ -27,6 +28,13 @@ class MemberResource extends JsonResource
             'induction_date' => $this->induction_date,
             'membership_end_date' => $this->membership_end_date,
             'status' => $this->status,
+            'created_by' => $this->whenLoaded('createdBy', function () {
+                return [
+                    'id' => $this->createdBy?->id,
+                    'name' => $this->createdBy?->name,
+                    'email' => $this->createdBy?->email,
+                ];
+            }),
             'created_at' => $this->created_at,
         ];
     }

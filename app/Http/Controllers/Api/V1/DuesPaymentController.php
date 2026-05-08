@@ -9,6 +9,10 @@ use App\Models\DuesPayment;
 use App\Models\MembershipDue;
 use Illuminate\Http\Request;
 use App\Models\Transaction;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
+use App\Models\User;
+use App\Notifications\RenewalRequestSubmittedNotification;
 
 class DuesPaymentController extends Controller
 {
@@ -76,10 +80,62 @@ class DuesPaymentController extends Controller
             ], 422);
         }
 
+        $user = $request->user();
+
+        if ($user->hasRole('member')) {
+            $member = $user->member;
+            if (!$member) {
+                return response()->json(['message' => 'Member record not found.'], 404);
+            }
+
+            if ($membershipDue->member_id !== $member->id || $membershipDue->status !== MembershipDue::STATUS_PENDING) {
+                return response()->json(['message' => 'This renewal due may not be submitted for review.'], 422);
+            }
+
+            $proofPath = null;
+            if ($request->hasFile('proof_of_payment')) {
+                $proofPath = $request->file('proof_of_payment')->store('proofs/renewals', 'public');
+            }
+
+            $result = DB::transaction(function () use ($membershipDue, $member, $validated, $proofPath) {
+                $payment = DuesPayment::create([
+                    'membership_due_id' => $membershipDue->id,
+                    'member_id' => $member->id,
+                    'submitted_by_user_id' => auth()->id(),
+                    'or_number' => $validated['or_number'] ?? null,
+                    'amount' => $validated['amount'],
+                    'payment_date' => $validated['payment_date'] ?? now()->toDateString(),
+                    'payment_method' => $validated['payment_method'] ?? 'cash',
+                    'reference_number' => $validated['reference_number'] ?? null,
+                    'receipt_image_url' => $proofPath,
+                    'status' => DuesPayment::STATUS_PENDING_REVIEW,
+                    'notes' => $validated['notes'] ?? 'Renewal proof submitted by member for Treasurer review.',
+                ]);
+
+                $transaction = Transaction::create([
+                    'or_number' => $validated['or_number'] ?? null,
+                    'transaction_type' => 'renewal',
+                    'member_id' => $member->id,
+                    'membership_due_id' => $membershipDue->id,
+                    'amount' => $validated['amount'],
+                    'payment_method' => $validated['payment_method'] ?? 'cash',
+                    'status' => 'pending',
+                    'proof_of_payment_path' => $proofPath,
+                    'notes' => 'Member submitted renewal payment for Treasurer review.',
+                ]);
+
+                return ['payment' => $payment, 'transaction' => $transaction];
+            });
+
+            Notification::send(User::role('treasurer')->get(), new RenewalRequestSubmittedNotification($result['payment']));
+
+            return new DuesPaymentResource($result['payment']->load(['membershipDue', 'member', 'submittedBy']));
+        }
+
         // Record the payment[cite: 6]
         $success = DuesPayment::recordPayment(
             $membershipDue,
-            $request->user(),
+            $user,
             $validated
         );
 

@@ -28,20 +28,20 @@ class EventController extends Controller
         );
     }
 
-   
+
 
     public function store(StoreEventRequest $request)
     {
         $data = $request->validated();
-        
-         // 🚀 SWITCHING TO S3 (BACKBLAZE)
+
+        // 🚀 SWITCHING TO S3 (BACKBLAZE)
 
         // if ($request->hasFile('image')) {
         //     $data['image'] = $request
         //         ->file('image')
         //         ->store('events', 'public');
         // }
-        
+
         // 1. Photo (Was 'public')
         if ($request->hasFile('image')) {
             $data['image'] = $request->file('image')->store('events', 's3');
@@ -54,7 +54,7 @@ class EventController extends Controller
         );
     }
 
-   public function update(UpdateEventRequest $request, Event $event)
+    public function update(UpdateEventRequest $request, Event $event)
     {
         $data = $request->validated();
 

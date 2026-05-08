@@ -11,8 +11,8 @@ class StoreDuesPaymentRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        // Only treasurers and admins can record payments
-        return $this->user()->hasAnyRole(['super_admin', 'admin', 'treasurer']);
+        // Allow members to submit renewal requests and let admins/treasurers record payments.
+        return $this->user()->hasAnyRole(['super_admin', 'admin', 'treasurer', 'member']);
     }
 
     /**
@@ -24,11 +24,12 @@ class StoreDuesPaymentRequest extends FormRequest
     {
         return [
             'membership_due_id' => ['required', 'exists:membership_dues,id'],
-            'or_number' => ['required', 'string', 'unique:dues_payments,or_number'],
+            'or_number' => ['nullable', 'string', 'unique:dues_payments,or_number'],
             'amount' => ['required', 'numeric', 'min:0.01'],
             'payment_date' => ['required', 'date'],
             'payment_method' => ['nullable', 'in:cash,check,bank_transfer,online,mobile_money'],
             'reference_number' => ['nullable', 'string', 'max:100'],
+            'proof_of_payment' => ['nullable', 'image', 'max:5000'],
             'notes' => ['nullable', 'string', 'max:500'],
         ];
     }

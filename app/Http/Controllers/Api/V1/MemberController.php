@@ -19,14 +19,18 @@ use App\Http\Resources\DuesPaymentResource;
 use App\Models\Transaction; // We added this earlier
 use App\Models\Member;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Artisan;
-use App\Notifications\SystemAlertNotification;
 use Illuminate\Support\Facades\Notification;
+use App\Notifications\RenewalApprovedNotification;
+use App\Notifications\RenewalRejectedNotification;
+use App\Notifications\RenewalRequestSubmittedNotification;
+use App\Notifications\SystemAlertNotification;
 
 class MemberController extends Controller
 {
@@ -60,7 +64,7 @@ class MemberController extends Controller
         // STRICTLY ANCHOR TO INDUCTION DATE
         $inductionDate = $request->induction_date ? Carbon::parse($request->induction_date) : now();
         $duration = $membershipType->duration_in_months ?? 12;
-        
+
         // Exact anniversary calculation
         $membershipEndDate = $inductionDate->copy()->addMonths($duration);
 
@@ -75,21 +79,21 @@ class MemberController extends Controller
 
         if (!$user) {
             $generatedPassword = Str::random(8);
-            
+
             $user = User::create([
                 'first_name' => $applicant->rep_first_name ?? $applicant->registered_business_name ?? 'Business',
                 'last_name' => $applicant->rep_surname ?? 'Member',
                 'email' => $applicant->email,
                 'password' => Hash::make($generatedPassword),
                 'requires_password_change' => true,
-                'is_member' => true 
+                'is_member' => true
             ]);
-            
+
             $user->assignRole('member');
 
             $applicantName = ($applicant->rep_first_name ?? '') . ' ' . ($applicant->rep_surname ?? '');
-            if(trim($applicantName) === '') $applicantName = $applicant->registered_business_name ?? 'Member';
-            
+            if (trim($applicantName) === '') $applicantName = $applicant->registered_business_name ?? 'Member';
+
             $emailData = [
                 'applicantName' => $applicantName,
                 'email' => $applicant->email,
@@ -104,9 +108,9 @@ class MemberController extends Controller
             ];
 
             try {
-                Mail::send('emails.member_welcome', $emailData, function($message) use ($applicant, $applicantName) {
+                Mail::send('emails.member_welcome', $emailData, function ($message) use ($applicant, $applicantName) {
                     $message->to($applicant->email, $applicantName)
-                            ->subject('Welcome to PCCI - Membership & Account Details');
+                        ->subject('Welcome to PCCI - Membership & Account Details');
                 });
             } catch (\Exception $e) {
                 // Failsafe so the DB save still happens even if Gmail is disconnected locally
@@ -126,7 +130,8 @@ class MemberController extends Controller
             'membership_type_id' => $membershipTypeId,
             'induction_date' => $inductionDate,
             'membership_end_date' => $membershipEndDate,
-            'status' => $status, 
+            'status' => $status,
+            'created_by_user_id' => auth()->id(),
         ]);
 
         if ($membershipEndDate) {
@@ -169,7 +174,7 @@ class MemberController extends Controller
 
     public function show(Member $member)
     {
-        return new MemberResource($member);
+        return new MemberResource($member->load(['applicant', 'membershipType', 'createdBy']));
     }
 
     public function update(UpdateMemberRequest $request, Member $member)
@@ -177,11 +182,11 @@ class MemberController extends Controller
         if ($request->filled('induction_date')) {
             $inductionDate = Carbon::parse($request->induction_date);
             $membershipType = MembershipType::findOrFail($member->membership_type_id);
-            
+
             // Calculate the anniversary date based on duration
             $duration = $membershipType->duration_in_months ?? 12;
             $membershipEndDate = $inductionDate->copy()->addMonths($duration);
-            
+
             // Determine status based on the NEW end date
             $newStatus = $membershipEndDate->isPast() ? 'inactive' : 'active';
 
@@ -211,7 +216,7 @@ class MemberController extends Controller
             if ($newStatus === 'inactive') {
                 $admins = User::role(['admin', 'super_admin'])->get();
                 $businessName = data_get($member, 'applicant.registered_business_name', 'A member');
-                
+
                 Notification::send($admins, new SystemAlertNotification(
                     'Membership Inactive',
                     "{$businessName}'s membership is now inactive based on the updated induction date.",
@@ -347,20 +352,53 @@ class MemberController extends Controller
         $type = $member->membershipType;
         $amount = $type->renewal_price ? $type->renewal_price : $type->price;
 
-        // 3. Create the PENDING transaction in the Master Ledger
-        $transaction = Transaction::create([
-            'transaction_type' => 'renewal',
-            'member_id' => $member->id,
-            'amount' => $amount,
-            'payment_method' => $request->payment_method,
-            'status' => 'pending', // This makes it show up for the Treasurer!
-            'proof_of_payment_path' => $path,
-            'notes' => 'Member submitted renewal via dashboard.',
-        ]);
+        $pendingDue = $member->membershipDues()
+            ->where('status', MembershipDue::STATUS_PENDING)
+            ->latest('due_year')
+            ->first();
+
+        if (!$pendingDue) {
+            return response()->json([
+                'message' => 'No pending renewal due found. Please contact the Treasurer.'
+            ], 422);
+        }
+
+        $result = DB::transaction(function () use ($member, $pendingDue, $request, $amount, $path) {
+            $temporaryOr = 'PENDING-' . strtoupper(substr(uniqid('', true), -12));
+
+            $payment = DuesPayment::create([
+                'membership_due_id' => $pendingDue->id,
+                'member_id' => $member->id,
+                'submitted_by_user_id' => auth()->id(),
+                'or_number' => $temporaryOr,
+                'amount' => $amount,
+                'payment_date' => now()->toDateString(),
+                'payment_method' => $request->payment_method,
+                'receipt_image_url' => $path,
+                'status' => DuesPayment::STATUS_PENDING_REVIEW,
+                'notes' => 'Renewal proof submitted by member for Treasurer review.',
+            ]);
+
+            $transaction = Transaction::create([
+                'transaction_type' => 'renewal',
+                'member_id' => $member->id,
+                'membership_due_id' => $pendingDue->id,
+                'amount' => $amount,
+                'payment_method' => $request->payment_method,
+                'status' => 'pending',
+                'proof_of_payment_path' => $path,
+                'notes' => 'Member submitted renewal via dashboard.',
+            ]);
+
+            return ['payment' => $payment, 'transaction' => $transaction];
+        });
+
+        Notification::send(User::role('treasurer')->get(), new RenewalRequestSubmittedNotification($result['payment']));
 
         return response()->json([
-            'message' => 'Renewal payment submitted successfully. Please wait for Treasurer approval.',
-            'transaction' => $transaction
+            'message' => 'Renewal request submitted successfully. Treasurer will review it soon.',
+            'payment' => $result['payment'],
+            'transaction' => $result['transaction'],
         ]);
     }
 
@@ -383,7 +421,7 @@ class MemberController extends Controller
         // 1. Lookup the Payment or Transaction
         $payment = \App\Models\DuesPayment::find($identifier);
         $transaction = \App\Models\Transaction::find($identifier);
-        
+
         $dueId = null;
         $memberId = null;
         $amount = 0;
@@ -392,15 +430,14 @@ class MemberController extends Controller
             $dueId = $payment->membership_due_id;
             $memberId = $payment->member_id;
             $amount = $payment->amount;
-            
+
             $linkedTxn = \App\Models\Transaction::where('or_number', $payment->or_number)->first();
             if ($linkedTxn) $transaction = $linkedTxn;
-            
         } elseif ($transaction) {
             $memberId = $transaction->member_id;
             $dueId = $transaction->membership_due_id;
             $amount = $transaction->amount;
-            
+
             $payment = \App\Models\DuesPayment::where('or_number', $transaction->or_number)->first();
             if ($payment && !$dueId) {
                 $dueId = $payment->membership_due_id;
@@ -426,40 +463,41 @@ class MemberController extends Controller
         $finalOrNumber = $existingOr ?: 'PCCI-OR-' . date('Y') . '-' . strtoupper(substr(uniqid(), -6));
 
         // 3. Mark Everything as Approved and attach the OR Number
-        if ($transaction) {
-            $transaction->update(['status' => 'approved', 'or_number' => $finalOrNumber]);
-        }
-        if ($payment) {
-            $payment->update(['status' => 'approved', 'or_number' => $finalOrNumber]);
-        }
-        
-        \App\Models\DuesPayment::where('membership_due_id', $dueId)
-            ->whereIn('status', ['pending_review', 'pending'])
-            ->update(['status' => 'approved', 'or_number' => $finalOrNumber]);
+        DB::transaction(function () use ($transaction, $payment, $due, $member, $finalOrNumber, $amount) {
+            if ($transaction) {
+                $transaction->update(['status' => 'approved', 'or_number' => $finalOrNumber]);
+            }
 
-        $due->update(['status' => 'paid', 'paid_date' => now()]);
+            if ($payment) {
+                $payment->update(['status' => 'approved', 'or_number' => $finalOrNumber]);
+            }
 
-        // 4. Reactivate Member
-        $nextYear = $due->due_year + 1;
-        $induction = $member->induction_date ? \Carbon\Carbon::parse($member->induction_date) : now();
-        $newEndDate = $induction->copy()->year($nextYear);
+            DuesPayment::where('membership_due_id', $due->id)
+                ->whereIn('status', [DuesPayment::STATUS_PENDING_REVIEW, 'pending'])
+                ->update(['status' => 'approved', 'or_number' => $finalOrNumber]);
 
-        $member->update(['status' => 'active', 'membership_end_date' => $newEndDate]);
+            $due->update(['status' => 'paid', 'paid_date' => now()]);
 
-        // 5. Generate Next Year's Due
-        \App\Models\MembershipDue::updateOrCreate(
-            ['member_id' => $member->id, 'due_year' => $nextYear],
-            ['amount' => $amount, 'due_date' => $newEndDate, 'status' => 'pending', 'notes' => 'Automatically generated']
-        );
+            $newEndDate = $member->membership_end_date
+                ? $member->membership_end_date->copy()->addYear()
+                : now()->copy()->addYear();
 
-        if ($member->user) {
-            $member->user->notify(new \App\Notifications\SystemAlertNotification(
-                'Membership Renewed!',
-                'Your renewal payment was approved. OR Number: ' . $finalOrNumber . '. Your membership is now active until ' . $newEndDate->format('F j, Y'),
-                'fa-check-circle',
-                'text-success'
-            ));
-        }
+            $member->update(['status' => 'active', 'membership_end_date' => $newEndDate]);
+
+            MembershipDue::updateOrCreate(
+                ['member_id' => $member->id, 'due_year' => $newEndDate->year],
+                ['amount' => $amount, 'due_date' => $newEndDate, 'status' => MembershipDue::STATUS_PENDING, 'notes' => 'Automatically generated']
+            );
+
+            if ($member->user) {
+                $member->user->notify(new RenewalApprovedNotification(
+                    $member,
+                    $transaction,
+                    $payment,
+                    $newEndDate
+                ));
+            }
+        });
 
         return response()->json(['message' => 'Renewal approved! OR Generated.', 'or_number' => $finalOrNumber], 200);
     }
@@ -494,21 +532,24 @@ class MemberController extends Controller
         $member = \App\Models\Member::find($memberId);
 
         // Mark as rejected
-        if ($transaction) {
-            $transaction->update(['status' => 'rejected', 'notes' => 'Rejected: ' . $validated['rejection_reason']]);
-        }
-        if ($payment) {
-            $payment->update(['status' => 'rejected', 'notes' => 'Rejected: ' . $validated['rejection_reason']]);
-        }
+        DB::transaction(function () use ($transaction, $payment, $member, $validated) {
+            if ($transaction) {
+                $transaction->update(['status' => 'rejected', 'notes' => 'Rejected: ' . $validated['rejection_reason']]);
+            }
 
-        if ($member && $member->user) {
-            $member->user->notify(new \App\Notifications\SystemAlertNotification(
-                'Renewal Payment Rejected',
-                'Your recent payment was rejected by the Treasurer. Reason: ' . $validated['rejection_reason'] . '. Please resubmit.',
-                'fa-times-circle',
-                'text-danger'
-            ));
-        }
+            if ($payment) {
+                $payment->update(['status' => DuesPayment::STATUS_REJECTED, 'notes' => 'Rejected: ' . $validated['rejection_reason']]);
+            }
+
+            if ($member && $member->user) {
+                $member->user->notify(new RenewalRejectedNotification(
+                    $member,
+                    $payment,
+                    $transaction,
+                    $validated['rejection_reason']
+                ));
+            }
+        });
 
         return response()->json(['message' => 'Payment rejected successfully.'], 200);
     }

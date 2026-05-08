@@ -6,10 +6,13 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Http\Requests\StoreApplicantRequest;
 use App\Models\Applicant;
+use App\Models\User;
 use App\Http\Resources\ApplicantResource;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Notification;
+use App\Notifications\NewApplicantNotification;
 // use App\Services\MailtrapApiService;
-use Illuminate\Support\Facades\Mail; 
+use Illuminate\Support\Facades\Mail;
 
 class ApplicantController extends Controller
 {
@@ -33,7 +36,7 @@ class ApplicantController extends Controller
 
     public function store(StoreApplicantRequest $request)
     {
-       $data = $request->validated();
+        $data = $request->validated();
 
         $data['date_submitted'] = now();
         $data['status'] = 'pending';
@@ -55,15 +58,17 @@ class ApplicantController extends Controller
 
         // USE CORRECT APPLICANTS COLUMNS
         $applicantName = $applicant->rep_first_name . ' ' . $applicant->rep_surname;
-        
+
         try {
-            Mail::send('emails.applicant_welcome', ['applicantName' => $applicantName], function($message) use ($applicant, $applicantName) {
+            Mail::send('emails.applicant_welcome', ['applicantName' => $applicantName], function ($message) use ($applicant, $applicantName) {
                 $message->to($applicant->email, $applicantName)
-                        ->subject('Application Received - PCCI Valenzuela');
+                    ->subject('Application Received - PCCI Valenzuela');
             });
         } catch (\Exception $e) {
             \Log::error('Failed to send applicant welcome email: ' . $e->getMessage());
         }
+
+        Notification::send(User::role(['admin', 'super_admin'])->get(), new NewApplicantNotification($applicant));
 
         return new ApplicantResource($applicant);
     }
@@ -83,9 +88,9 @@ class ApplicantController extends Controller
     {
         // 1. Safely track old and new status with lowercase to prevent case-mismatches
         $oldStatus = strtolower($applicant->status ?? '');
-        
+
         $applicant->update($request->all());
-        
+
         $newStatus = strtolower($applicant->status ?? '');
 
         // 2. Bulletproof Company Name Extraction
@@ -93,16 +98,18 @@ class ApplicantController extends Controller
         if (is_string($profile)) {
             $profile = json_decode($profile, true); // Decode if it's a JSON string
         }
-        $businessName = $profile['registered_business_name'] ?? 'Applicant #' . $applicant->id;
-        
+        $businessName = $applicant->registered_business_name
+            ?? ($profile['registered_business_name'] ?? null)
+            ?? 'Applicant #' . $applicant->id;
+
         $actorName = $request->user()->name ?? 'System';
 
         // --- NOTIFICATION LOGIC ---
 
         // 1. Admin Approves -> Notify Treasurers (BLUE / text-primary)
         if ($oldStatus !== 'approved' && $newStatus === 'approved') {
-            $treasurers = \App\Models\User::role('treasurer')->get();
-            \Illuminate\Support\Facades\Notification::send($treasurers, new \App\Notifications\SystemAlertNotification(
+            $treasurers = User::role('treasurer')->get();
+            Notification::send($treasurers, new \App\Notifications\SystemAlertNotification(
                 'New Approval for Review',
                 "{$actorName} approved {$businessName}. Please review their Proof of Payment.",
                 'fa-user-check',
@@ -114,13 +121,13 @@ class ApplicantController extends Controller
         if ($oldStatus !== 'paid' && $newStatus === 'paid') {
             // Convert to Member
             $userEmail = $profile['email'] ?? null;
-            $user = \App\Models\User::where('email', $userEmail)->orWhere('id', $applicant->user_id)->first();
+            $user = User::where('email', $userEmail)->orWhere('id', $applicant->user_id)->first();
             if ($user) {
                 $user->update(['is_member' => true]);
             }
 
-            $admins = \App\Models\User::role(['admin', 'super_admin'])->get();
-            \Illuminate\Support\Facades\Notification::send($admins, new \App\Notifications\SystemAlertNotification(
+            $admins = User::role(['admin', 'super_admin'])->get();
+            Notification::send($admins, new \App\Notifications\SystemAlertNotification(
                 'Payment Verified',
                 "{$actorName} verified payment for {$businessName}. They are now approved and ready for member account creation.",
                 'fa-check-circle',
@@ -193,7 +200,7 @@ class ApplicantController extends Controller
         return Storage::disk('s3')->download($filePath);
     }
 
-   public function reject(Request $request, Applicant $applicant)
+    public function reject(Request $request, Applicant $applicant)
     {
         $request->validate([
             'rejection_reason' => 'required|string|max:1000'
@@ -211,14 +218,14 @@ class ApplicantController extends Controller
             'applicantName' => $applicantName,
             'status' => 'Rejected',
             'messageText' => "We regret to inform you that your application or payment has been rejected. Please review the specific reason below and contact our administration for further instructions.",
-            'rejectionReason' => $rejectionReason, 
-            'isWarning' => true 
+            'rejectionReason' => $rejectionReason,
+            'isWarning' => true
         ];
 
         try {
-            Mail::send('emails.applicant_status', $emailData, function($message) use ($applicant, $applicantName) {
+            Mail::send('emails.applicant_status', $emailData, function ($message) use ($applicant, $applicantName) {
                 $message->to($applicant->email, $applicantName)
-                        ->subject('Action Required: PCCI Valenzuela Application Rejected'); 
+                    ->subject('Action Required: PCCI Valenzuela Application Rejected');
             });
         } catch (\Exception $e) {
             \Log::error('Failed to send applicant rejection email: ' . $e->getMessage());

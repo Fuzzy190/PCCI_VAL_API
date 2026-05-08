@@ -11,7 +11,7 @@ use App\Http\Resources\BusinessResource;
 class BusinessController extends Controller
 {
 
-   public function index()
+    public function index()
     {
         $businesses = Member::where('status', 'active')
             ->with('applicant') // Essential for performance (prevents N+1 queries)
@@ -21,5 +21,4 @@ class BusinessController extends Controller
 
         return BusinessResource::collection($businesses);
     }
-
 }

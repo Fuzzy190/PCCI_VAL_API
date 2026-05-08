@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 
-class NotificationController extends Controller 
+class NotificationController extends Controller
 {
     // Fetch notifications for the logged-in user
     public function index(Request $request)
@@ -15,7 +15,7 @@ class NotificationController extends Controller
         return response()->json([
             'unread_count'  => $user->unreadNotifications->count(),
             // Increased to 100 to ensure all 65+ migrated members show up
-            'notifications' => $user->notifications()->take(100)->get() 
+            'notifications' => $user->notifications()->take(100)->get()
         ]);
     }
 

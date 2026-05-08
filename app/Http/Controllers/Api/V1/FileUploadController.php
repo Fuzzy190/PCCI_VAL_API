@@ -16,11 +16,11 @@ class FileUploadController extends Controller
 
         if ($request->hasFile('file')) {
             $file = $request->file('file');
-            
+
             // 1. Determine if it's a private document or a public pastry photo
             // We can check the path/folder logic here
             $folder = $file->getClientOriginalExtension() === 'pdf' ? 'documents' : 'pastries';
-            
+
             // 2. Generate a clean name
             $fileName = time() . '_' . str_replace(' ', '_', $file->getClientOriginalName());
 

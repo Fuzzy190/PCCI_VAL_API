@@ -19,7 +19,7 @@ use App\Http\Controllers\Api\V1\MemberApplicationController;
 use App\Http\Controllers\Api\V1\MemberController;
 use App\Http\Controllers\Api\V1\MembershipDueController;
 use App\Http\Controllers\Api\V1\MembershipTypeController;
-use App\Http\Controllers\Api\V1\PaymentChannelController; 
+use App\Http\Controllers\Api\V1\PaymentChannelController;
 use App\Http\Controllers\Api\V1\PaymentController;
 use App\Http\Controllers\Api\V1\ProductController;
 use App\Http\Controllers\Api\V1\PublicProductController;
@@ -50,10 +50,10 @@ Route::get('/v1/events', [EventController::class, 'index']);
 Route::get('/v1/events/{event}', [EventController::class, 'show']);
 
 //Get ==>> Board of Trustees
-Route::get('v1/trustees',[BoardOfTrusteeController::class,'index']);
+Route::get('v1/trustees', [BoardOfTrusteeController::class, 'index']);
 
 //Get ==>> Members (Business)
-Route::get('v1/business',[BusinessController::class,'index']);
+Route::get('v1/business', [BusinessController::class, 'index']);
 
 //Post ==>> Forgot password
 Route::post('/forgot-password/send-otp', [OtpPasswordResetController::class, 'sendOtp']);
@@ -89,7 +89,6 @@ Route::get('/refresh-db', function () {
             'status' => 'success',
             'output' => Artisan::output()
         ]);
-
     } catch (\Throwable $e) {
         Log::error('Refresh DB failed: ' . $e->getMessage());
 
@@ -101,33 +100,35 @@ Route::get('/refresh-db', function () {
 });
 
 Route::get('/v1/test-notif', function (Illuminate\Http\Request $request) {
-    // 1. Try to get the logged-in user, otherwise find the first treasurer
-    $user = $request->user() ?: \App\Models\User::role('treasurer')->first();
+    // 1. Try to get the logged-in user, otherwise find the first admin
+    $user = $request->user() ?: \App\Models\User::role(['admin', 'super_admin'])->first();
 
     if (!$user) {
-        return response()->json(['error' => 'No treasurer found in the database'], 404);
+        return response()->json(['error' => 'No admin found in the database'], 404);
     }
 
     // 2. Trigger the notification
     $user->notify(new SystemAlertNotification(
-        'Connection Success!', 
-        'The backend notification was saved to the database. Environment: ' . config('app.env'), 
-        'fa-rocket', 
+        'Connection Success!',
+        'The backend notification was saved to the database. Environment: ' . config('app.env'),
+        'fa-rocket',
         'text-primary'
     ));
 
     return response()->json([
         'message' => 'Test notification sent!',
         'sent_to' => $user->email,
+        'role' => $user->getRoleNames(),
         'environment' => config('app.env'),
-        'base_url' => config('app.url')
+        'base_url' => config('app.url'),
+        'check_endpoint' => '/api/v1/notifications'
     ]);
 });
 
 // =========================================================================
 // AUTHENTICATED ROUTES
 // =========================================================================
-Route::middleware(['auth:sanctum'])->group(function() {
+Route::middleware(['auth:sanctum'])->group(function () {
 
     // --- EXEMPT FROM PASSWORD ENFORCEMENT ---
     Route::get('/v1/user', function (Request $request) {
@@ -142,19 +143,19 @@ Route::middleware(['auth:sanctum'])->group(function() {
 
     // THIS IS THE ONLY ACTION THEY CAN PERFORM IF requires_password_change IS TRUE
     Route::post('/v1/user/first-time-password-change', [UserController::class, 'firstTimePasswordChange']);
-    
+
     // =========================================================================
     // ENFORCE PASSWORD MIDDLEWARE
     // =========================================================================
-    Route::middleware(['enforce.password.change'])->group(function() {
-        
+    Route::middleware(['enforce.password.change'])->group(function () {
+
         // ---------------------------------------------------------------------
         // GENERAL ACCOUNT ACTIONS 
         // ---------------------------------------------------------------------
-        Route::middleware(['throttle:api'])->group(function(){
+        Route::middleware(['throttle:api'])->group(function () {
             Route::put('/v1/user/change-info', [UserController::class, 'changeInfo']);
             Route::post('/user/confirm-password-change', [UserController::class, 'confirmPasswordChange']);
-            Route::post('/user/request-password-change', [UserController::class, 'requestPasswordChange']); 
+            Route::post('/user/request-password-change', [UserController::class, 'requestPasswordChange']);
         });
 
         Route::post('/v1/members/trigger-expiry-check', [\App\Http\Controllers\Api\V1\MemberController::class, 'triggerExpiryCheck']);
@@ -163,7 +164,7 @@ Route::middleware(['auth:sanctum'])->group(function() {
         // SUPER ADMIN & ADMIN
         // ---------------------------------------------------------------------
         Route::middleware(['role:super_admin|admin'])->group(function () {
-            
+
             Route::post('/v1/payment-channels', [PaymentChannelController::class, 'store']);
             Route::put('/v1/payment-channels/{paymentChannel}', [PaymentChannelController::class, 'update']);
             Route::delete('/v1/payment-channels/{paymentChannel}', [PaymentChannelController::class, 'destroy']);
@@ -171,12 +172,12 @@ Route::middleware(['auth:sanctum'])->group(function() {
             Route::post('/v1/applicants', [ApplicantController::class, 'store']);
             Route::put('/v1/applicants/{applicant}', [ApplicantController::class, 'update']);
             Route::delete('/v1/applicants/{applicant}', [ApplicantController::class, 'destroy']);
-            
+
             Route::apiResource('v1/membership-types', MembershipTypeController::class)->except(['destroy']);
 
-            Route::get('/v1/users', [RegisteredUserController::class, 'index']); 
-            Route::get('/v1/users/{user}', [RegisteredUserController::class, 'show']); 
-            Route::get('/v1/users/roles/{role}', [RegisteredUserController::class, 'getByRole']); 
+            Route::get('/v1/users', [RegisteredUserController::class, 'index']);
+            Route::get('/v1/users/{user}', [RegisteredUserController::class, 'show']);
+            Route::get('/v1/users/roles/{role}', [RegisteredUserController::class, 'getByRole']);
 
             Route::post('v1/activities', [ActivityController::class, 'store']);
             Route::put('v1/activities/{activity}', [ActivityController::class, 'update']);
@@ -184,27 +185,27 @@ Route::middleware(['auth:sanctum'])->group(function() {
 
             Route::apiResource('/v1/categories', CategoryController::class)->except(['show']);
             Route::apiResource('/v1/events', EventController::class)->except(['index', 'show']);
-            
-            Route::get('v1/positions',[BoardPositionController::class,'index']);
-            Route::post('v1/positions',[BoardPositionController::class,'store']);
-            Route::put('v1/positions/{boardPosition}',[BoardPositionController::class,'update']);
 
-            Route::post('v1/trustees',[BoardOfTrusteeController::class,'store']);
-            Route::put('v1/trustees/{boardOfTrustee}',[BoardOfTrusteeController::class,'update']);    
+            Route::get('v1/positions', [BoardPositionController::class, 'index']);
+            Route::post('v1/positions', [BoardPositionController::class, 'store']);
+            Route::put('v1/positions/{boardPosition}', [BoardPositionController::class, 'update']);
+
+            Route::post('v1/trustees', [BoardOfTrusteeController::class, 'store']);
+            Route::put('v1/trustees/{boardOfTrustee}', [BoardOfTrusteeController::class, 'update']);
         });
 
         // ---------------------------------------------------------------------
         // SUPER ADMIN, ADMIN & TREASURER
         // ---------------------------------------------------------------------
-        Route::middleware(['role:super_admin|admin|treasurer'])->group(function(){
-            
+        Route::middleware(['role:super_admin|admin|treasurer'])->group(function () {
+
             // --> ADD THESE TWO LINES FOR TRANSACTIONS <--
             Route::get('v1/transactions', [TransactionController::class, 'index']);
             Route::get('v1/transactions/stats', [TransactionController::class, 'getStats']);
 
             // POST ==>> Approve member renewal payments
             Route::post('v1/members/approve-renewal-payment/{paymentId}', [MemberController::class, 'approveRenewalPayment']);
-            
+
             // POST ==>> Reject member renewal payments
             Route::post('v1/members/reject-renewal-payment/{paymentId}', [MemberController::class, 'rejectRenewalPayment']);
 
@@ -224,7 +225,7 @@ Route::middleware(['auth:sanctum'])->group(function() {
             Route::get('v1/dues-payments/stats', [DuesPaymentController::class, 'getStats']);
             Route::get('v1/membership-dues/{membershipDue}/payments', [DuesPaymentController::class, 'getDuePayments']);
 
-            Route::get('v1/membership-types', [MembershipTypeController::class, 'index']); 
+            Route::get('v1/membership-types', [MembershipTypeController::class, 'index']);
 
             Route::get('/v1/applicants', [ApplicantController::class, 'index']);
             Route::get('/v1/applicants/{applicant}', [ApplicantController::class, 'show']);
@@ -238,8 +239,8 @@ Route::middleware(['auth:sanctum'])->group(function() {
         // SUPER ADMIN EXCLUSIVES
         // ---------------------------------------------------------------------
         Route::middleware(['role:super_admin'])->group(function () {
-            Route::delete('v1/trustees/{boardOfTrustee}',[BoardOfTrusteeController::class,'destroy']);
-            Route::delete('v1/positions/{boardPosition}',[BoardPositionController::class,'destroy']);
+            Route::delete('v1/trustees/{boardOfTrustee}', [BoardOfTrusteeController::class, 'destroy']);
+            Route::delete('v1/positions/{boardPosition}', [BoardPositionController::class, 'destroy']);
         });
 
         // ---------------------------------------------------------------------
@@ -269,4 +270,4 @@ Route::middleware(['auth:sanctum'])->group(function() {
     });
 });
 
-require __DIR__.'/auth.php';
+require __DIR__ . '/auth.php';

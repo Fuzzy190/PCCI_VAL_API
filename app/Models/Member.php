@@ -17,6 +17,7 @@ class Member extends Model
         'induction_date',
         'membership_end_date',
         'status',
+        'created_by_user_id',
     ];
 
     protected $casts = [
@@ -40,6 +41,11 @@ class Member extends Model
         return $this->belongsTo(User::class);
     }
 
+    public function createdBy()
+    {
+        return $this->belongsTo(User::class, 'created_by_user_id');
+    }
+
     public function expiringNotifications()
     {
         return $this->hasMany(ExpiringMembershipNotification::class);
@@ -57,7 +63,7 @@ class Member extends Model
     public function routeNotificationForMail($notification)
     {
         $applicant = $this->applicant;
-        
+
         if (!$applicant) {
             return null;
         }
