@@ -9,7 +9,10 @@ use App\Http\Requests\UpdatePaymentRequest;
 use App\Http\Resources\PaymentResource;
 use App\Models\MembershipType;
 use App\Models\Transaction;
+use App\Models\User;
+use App\Notifications\SystemAlertNotification;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Notification;
 
 class PaymentController extends Controller
 {
@@ -30,7 +33,7 @@ class PaymentController extends Controller
     public function store(StorePaymentRequest $request)
     {
         $membershipType = MembershipType::findOrFail($request->membership_type_id);
-        
+
         // Generate OR Number once so we can use it in both tables
         $orNumber = 'OR-' . date('Y') . '-' . str_pad(Payment::count() + 1, 3, '0', STR_PAD_LEFT);
         $amount = $membershipType->price;
@@ -52,13 +55,25 @@ class PaymentController extends Controller
             'applicant_id' => $request->applicant_id,     // Link to applicant
             'amount' => $amount,
             'payment_method' => 'cash', // Defaulting to cash, or get from request if available
-            'status' => 'approved', 
+            'status' => 'approved',
             'processed_by_user_id' => auth()->id(),
             'notes' => 'Generated automatically from applicant registration payment.',
         ]);
 
         // Auto-update the applicant status to "paid"[cite: 8]
-        $payment->applicant->update(['status' => 'paid']);
+        $applicant = $payment->applicant;
+        $applicant->update(['status' => 'paid']);
+
+        $businessName = $applicant->registered_business_name
+            ?? (trim(($applicant->rep_first_name ?? '') . ' ' . ($applicant->rep_surname ?? '')) ?: null)
+            ?? 'Applicant #' . $applicant->id;
+
+        Notification::send(User::role(['admin', 'super_admin'])->get(), new SystemAlertNotification(
+            'Payment Verified',
+            auth()->user()->name . " verified payment for {$businessName} #{$applicant->id}. This applicant is now ready for member account creation.",
+            'fa-check-circle',
+            'text-success'
+        ));
 
         return new PaymentResource($payment);
     }

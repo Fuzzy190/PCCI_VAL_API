@@ -100,6 +100,7 @@ class ApplicantController extends Controller
         }
         $businessName = $applicant->registered_business_name
             ?? ($profile['registered_business_name'] ?? null)
+            ?? (trim(($applicant->rep_first_name ?? '') . ' ' . ($applicant->rep_surname ?? '')) ?: null)
             ?? 'Applicant #' . $applicant->id;
 
         $actorName = $request->user()->name ?? 'System';
@@ -111,7 +112,7 @@ class ApplicantController extends Controller
             $treasurers = User::role('treasurer')->get();
             Notification::send($treasurers, new \App\Notifications\SystemAlertNotification(
                 'New Approval for Review',
-                "{$actorName} approved {$businessName}. Please review their Proof of Payment.",
+                "{$actorName} approved {$businessName} #{$applicant->id}. Please review their Proof of Payment.",
                 'fa-user-check',
                 'text-primary'
             ));
