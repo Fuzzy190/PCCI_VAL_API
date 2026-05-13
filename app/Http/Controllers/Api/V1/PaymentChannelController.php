@@ -9,9 +9,16 @@ use App\Http\Resources\PaymentChannelResource;
 
 class PaymentChannelController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $channels = PaymentChannel::where('is_active', true)->get();
+        // SMART FIX: Admin panel sends ?all=true to see everything.
+        // Applicants (public) don't send it, so they only see the active one!
+        if ($request->query('all') === 'true') {
+            $channels = PaymentChannel::orderBy('created_at', 'desc')->get();
+        } else {
+            $channels = PaymentChannel::where('is_active', true)->get();
+        }
+
         return PaymentChannelResource::collection($channels);
     }
 
@@ -25,14 +32,14 @@ class PaymentChannelController extends Controller
             'payment_method' => 'required|string|max:255',
             'account_name'   => 'required|string|max:255',
             'account_no'     => 'required|string|max:255',
-            'amount'         => 'numeric|min:0|nullable', // <-- ADD VALIDATION FOR AMOUNT
+            'amount'         => 'numeric|min:0|nullable',
             'is_active'      => 'boolean'
         ]);
 
         $channel = PaymentChannel::create($validated);
-        
+
         return response()->json([
-            'message' => 'Payment channel added.', 
+            'message' => 'Payment channel added.',
             'data'    => new PaymentChannelResource($channel)
         ], 201);
     }
@@ -47,14 +54,14 @@ class PaymentChannelController extends Controller
             'payment_method' => 'sometimes|required|string|max:255',
             'account_name'   => 'sometimes|required|string|max:255',
             'account_no'     => 'sometimes|required|string|max:255',
-            'amount'         => 'sometimes|numeric|min:0|nullable', // <-- ADD VALIDATION FOR AMOUNT
+            'amount'         => 'sometimes|numeric|min:0|nullable',
             'is_active'      => 'boolean'
         ]);
 
         $paymentChannel->update($validated);
-        
+
         return response()->json([
-            'message' => 'Payment channel updated.', 
+            'message' => 'Payment channel updated.',
             'data'    => new PaymentChannelResource($paymentChannel)
         ]);
     }
