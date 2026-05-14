@@ -135,6 +135,10 @@ Route::middleware(['auth:sanctum'])->group(function () {
         return new UserResource($request->user());
     });
 
+    // --- ADMIN USERS CRUD ---
+    // (This automatically registers GET, POST, PUT, and DELETE for /v1/users)
+    Route::apiResource('v1/users', UserController::class);
+
     // GENERAL NOTIFICATIONS (The New System)
     Route::get('/v1/notifications', [NotificationController::class, 'index']);
     Route::patch('/v1/notifications/{id}/read', [NotificationController::class, 'markAsRead']);

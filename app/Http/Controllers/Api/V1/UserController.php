@@ -37,7 +37,7 @@ class UserController extends Controller
 
         // Update password and lift the restriction
         $user->password = \Illuminate\Support\Facades\Hash::make($request->new_password);
-        $user->requires_password_change = false; 
+        $user->requires_password_change = false;
         $user->save();
 
         return response()->json([
@@ -130,7 +130,7 @@ class UserController extends Controller
             'first_name' => ['sometimes', 'required', 'string', 'max:255'],
             'last_name'  => ['sometimes', 'required', 'string', 'max:255'],
             'email'      => ['sometimes', 'required', 'email', 'max:255', 'unique:users,email,' . $user->id],
-            'image'      => ['nullable', 'image', 'mimes:jpg,jpeg,png', 'max:5120'], 
+            'image'      => ['nullable', 'image', 'mimes:jpg,jpeg,png', 'max:5120'],
         ]);
 
         // 2. Update fields using $request->has() so it explicitly checks the payload
@@ -148,7 +148,7 @@ class UserController extends Controller
 
         // 3. Handle Image Upload to Backblaze (S3)
         if ($request->hasFile('image')) {
-            
+
             if (!empty($user->profile_photo_path)) {
                 Storage::disk('s3')->delete($user->profile_photo_path);
             }
@@ -158,14 +158,14 @@ class UserController extends Controller
             $filename = 'image_' . time() . '.' . $extension;
 
             $identifier = $user->member ? $user->member->id : $user->id;
-            
+
             // Sanitize the full name securely
-            $sanitizedName = Str::slug($user->first_name . ' ' . $user->last_name); 
+            $sanitizedName = Str::slug($user->first_name . ' ' . $user->last_name);
 
             $folderPath = "member/{$identifier}.{$sanitizedName}";
 
             $path = $file->storeAs($folderPath, $filename, 's3');
-            $user->profile_photo_path = $path; 
+            $user->profile_photo_path = $path;
         }
 
         $user->save();
@@ -174,5 +174,55 @@ class UserController extends Controller
             'message' => 'User information updated successfully',
             'user' => new UserResource($user)
         ]);
+    }
+
+    /**
+     * Update an Admin User (Super Admin only)
+     */
+    public function update(Request $request, $id)
+    {
+        $userToEdit = \App\Models\User::findOrFail($id);
+
+        $validated = $request->validate([
+            'first_name' => ['required', 'string', 'max:255'],
+            'last_name' => ['required', 'string', 'max:255'],
+            // Ensure email is unique, but skip checking the current user's own email!
+            'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email,' . $userToEdit->id],
+            'role' => ['required', 'string']
+        ]);
+
+        // Update basic info
+        $userToEdit->update([
+            'first_name' => $validated['first_name'],
+            'last_name' => $validated['last_name'],
+            'email' => $validated['email'],
+        ]);
+
+        // Sync Spatie Permissions (This removes old roles and applies the new one)
+        if (class_exists('\\Spatie\\Permission\\Models\\Role')) {
+            $userToEdit->syncRoles([$validated['role']]);
+        }
+
+        return response()->json([
+            'message' => 'User updated successfully.',
+            'user' => $userToEdit
+        ]);
+    }
+
+    /**
+     * Delete an Admin User (Super Admin only)
+     */
+    public function destroy(Request $request, $id) // <-- ADDED 'Request $request' HERE
+    {
+        $userToDelete = \App\Models\User::findOrFail($id);
+
+        // Security check: Prevent the Super Admin from accidentally deleting themselves!
+        if ($request->user()->id === $userToDelete->id) {
+            return response()->json(['message' => 'You cannot delete your own active account.'], 403);
+        }
+
+        $userToDelete->delete();
+
+        return response()->json(['message' => 'User deleted successfully.']);
     }
 }
