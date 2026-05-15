@@ -28,31 +28,32 @@ class BusinessResource extends JsonResource
         $applicant = $this->applicant;
 
         return [
+            'id' => $this->id,
             'photo_url' => $this->getS3Url($applicant?->photo_path, 60),
 
             'industry' => $applicant?->industry,
             'registered_business_name' => $applicant?->registered_business_name,
             'business_tagline' => $applicant?->business_tagline ?? 'this text shows coz this data is empty',
-            'tags' => $applicant?->tags ?? [], 
+            'tags' => $applicant?->tags ?? [],
             'telephone_no' => $applicant?->telephone_no ?? 'this text shows coz this data is empty',
             'location' => $applicant?->location, // e.g., "Sta. maria, Valenzuela City"
-            
+
             'description' => $applicant?->about_description ?? 'this text shows coz this data is empty',
             'business_hours' => $applicant?->business_hours,
-            
+
             // We can still include status if the frontend needs to show 'Open' or 'Verified'
             'status' => $this->status,
-            
+
             'email' => $applicant?->email,
             'business_location' => [
-                    'business_address'  => $applicant?->business_address,
-                    'city_municipality' => $applicant?->city_municipality,
-                    'province'          => $applicant?->province,
-                    'region'            => $applicant?->region,
-                    'zip_code'          => $applicant?->zip_code,
-                    //link to google map, we can generate it using the address fields, but for now we will just add a placeholder
-                    'location_link' => $applicant?->location_link ?? 'No.04 fatima lane La Milagrosa Village, Marikina Heights 1810',
-                ],
+                'business_address'  => $applicant?->business_address,
+                'city_municipality' => $applicant?->city_municipality,
+                'province'          => $applicant?->province,
+                'region'            => $applicant?->region,
+                'zip_code'          => $applicant?->zip_code,
+                //link to google map, we can generate it using the address fields, but for now we will just add a placeholder
+                'location_link' => $applicant?->location_link ?? 'No.04 fatima lane La Milagrosa Village, Marikina Heights 1810',
+            ],
         ];
     }
 }

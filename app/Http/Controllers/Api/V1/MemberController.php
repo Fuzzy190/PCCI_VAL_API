@@ -179,6 +179,35 @@ class MemberController extends Controller
 
     public function update(UpdateMemberRequest $request, Member $member)
     {
+        // =========================================================================
+        // NEW FEATURE: Update Basic Profile (Company Name, Email, Status Override)
+        // =========================================================================
+        if ($request->filled('company_name') || $request->filled('email') || $request->filled('status')) {
+            if ($member->applicant) {
+                $applicantUpdates = [];
+
+                if ($request->filled('company_name')) {
+                    $applicantUpdates['registered_business_name'] = $request->company_name;
+                }
+                if ($request->filled('email')) {
+                    $applicantUpdates['email'] = $request->email;
+                }
+
+                if (!empty($applicantUpdates)) {
+                    $member->applicant->update($applicantUpdates);
+                }
+            }
+
+            // Update manual status if they changed it without changing the date
+            if ($request->filled('status')) {
+                $member->update(['status' => $request->status]);
+            }
+        }
+
+
+        // =========================================================================
+        // YOUR ORIGINAL LOGIC: Induction Date, End Date, and Pending Due Syncing
+        // =========================================================================
         if ($request->filled('induction_date')) {
             $inductionDate = Carbon::parse($request->induction_date);
             $membershipType = MembershipType::findOrFail($member->membership_type_id);
@@ -187,8 +216,9 @@ class MemberController extends Controller
             $duration = $membershipType->duration_in_months ?? 12;
             $membershipEndDate = $inductionDate->copy()->addMonths($duration);
 
-            // Determine status based on the NEW end date
-            $newStatus = $membershipEndDate->isPast() ? 'inactive' : 'active';
+            // Determine status based on the NEW end date 
+            // (Unless the Super Admin explicitly overrode the status in the modal)
+            $newStatus = $request->filled('status') ? $request->status : ($membershipEndDate->isPast() ? 'inactive' : 'active');
 
             // 1. Update the Member record
             $member->update([
@@ -235,7 +265,10 @@ class MemberController extends Controller
             }
         }
 
-        return new MemberResource($member->fresh());
+        return response()->json([
+            'message' => 'Member profile updated successfully.',
+            'data' => new MemberResource($member->fresh())
+        ]);
     }
 
     public function destroy(Member $member)

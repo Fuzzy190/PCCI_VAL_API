@@ -18,7 +18,15 @@ class BusinessController extends Controller
             // ->paginate();
             ->get();
 
-
         return BusinessResource::collection($businesses);
+    }
+
+    public function show(Member $business)
+    {
+        if ($business->status !== 'active') {
+            return response()->json(['message' => 'Business not found.'], 404);
+        }
+
+        return new BusinessResource($business);
     }
 }

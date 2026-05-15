@@ -54,6 +54,8 @@ Route::get('v1/trustees', [BoardOfTrusteeController::class, 'index']);
 
 //Get ==>> Members (Business)
 Route::get('v1/business', [BusinessController::class, 'index']);
+Route::get('v1/business/{business}', [BusinessController::class, 'show']);
+Route::get('/v1/membership-types', [MembershipTypeController::class, 'index']);
 
 //Post ==>> Forgot password
 Route::post('/forgot-password/send-otp', [OtpPasswordResetController::class, 'sendOtp']);
@@ -135,6 +137,11 @@ Route::middleware(['auth:sanctum'])->group(function () {
         return new UserResource($request->user());
     });
 
+    // --> FIXED MEMBERS ROUTES <--
+    Route::get('v1/members', [\App\Http\Controllers\Api\V1\MemberController::class, 'index']);
+    Route::post('v1/members', [\App\Http\Controllers\Api\V1\MemberController::class, 'store']);
+    Route::put('v1/members/{member}', [\App\Http\Controllers\Api\V1\MemberController::class, 'update']);
+
     // --- ADMIN USERS CRUD ---
     // (This automatically registers GET, POST, PUT, and DELETE for /v1/users)
     Route::apiResource('v1/users', UserController::class);
@@ -177,7 +184,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
             Route::put('/v1/applicants/{applicant}', [ApplicantController::class, 'update']);
             Route::delete('/v1/applicants/{applicant}', [ApplicantController::class, 'destroy']);
 
-            Route::apiResource('v1/membership-types', MembershipTypeController::class)->except(['destroy']);
+            Route::apiResource('v1/membership-types', MembershipTypeController::class)->except(['destroy', 'index']);
 
             Route::get('/v1/users', [RegisteredUserController::class, 'index']);
             Route::get('/v1/users/{user}', [RegisteredUserController::class, 'show']);
@@ -228,8 +235,6 @@ Route::middleware(['auth:sanctum'])->group(function () {
             Route::get('v1/dues-payments/treasurer-payments', [DuesPaymentController::class, 'getTreasurerPayments']);
             Route::get('v1/dues-payments/stats', [DuesPaymentController::class, 'getStats']);
             Route::get('v1/membership-dues/{membershipDue}/payments', [DuesPaymentController::class, 'getDuePayments']);
-
-            Route::get('v1/membership-types', [MembershipTypeController::class, 'index']);
 
             Route::get('/v1/applicants', [ApplicantController::class, 'index']);
             Route::get('/v1/applicants/{applicant}', [ApplicantController::class, 'show']);

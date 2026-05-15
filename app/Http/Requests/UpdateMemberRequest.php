@@ -23,6 +23,9 @@ class UpdateMemberRequest extends FormRequest
     {
         return [
             'induction_date' => ['required', 'date'],
+            'company_name' => ['sometimes', 'required', 'string', 'max:255'],
+            'email' => ['sometimes', 'required', 'email', 'max:255'],
+            'status' => ['sometimes', 'required', 'in:active,inactive,pending,expired'],
         ];
     }
 }
