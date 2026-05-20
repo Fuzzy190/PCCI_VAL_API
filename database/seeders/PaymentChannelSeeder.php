@@ -24,13 +24,13 @@ class PaymentChannelSeeder extends Seeder
                 'payment_method' => 'GCash',
                 'account_name'   => 'PCCI Valenzuela',
                 'account_no'     => '0917 000 0000', // Replace with real GCash number
-                'is_active'      => true
+                'is_active'      => false
             ],
             [
                 'payment_method' => 'BDO',
                 'account_name'   => 'PCCI Valenzuela',
                 'account_no'     => '0012 3456 7890', // Replace with real BDO account number
-                'is_active'      => true
+                'is_active'      => false
             ]
         ];
 
@@ -39,7 +39,7 @@ class PaymentChannelSeeder extends Seeder
             PaymentChannel::updateOrCreate(
                 [
                     // We use account_no as the unique key to check if it already exists
-                    'account_no' => $channel['account_no'] 
+                    'account_no' => $channel['account_no']
                 ],
                 $channel
             );

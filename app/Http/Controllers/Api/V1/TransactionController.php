@@ -4,47 +4,36 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\Transaction;
+use App\Models\User;      // <--- ADD THIS
+use App\Models\Applicant; // <--- ADD THIS
+use App\Models\Member;    // <--- ADD THIS
 use Illuminate\Http\Request;
 
 class TransactionController extends Controller
 {
-    /**
-     * Display a listing of all global transactions (The General Ledger)
-     */
     public function index(Request $request)
     {
-        // Only allow admins and treasurers to view the ledger
         if (!$request->user()->hasAnyRole(['super_admin', 'admin', 'treasurer'])) {
             return response()->json(['message' => 'Unauthorized access'], 403);
         }
 
-        // FIX: We must eager-load 'applicant' and 'member.applicant' so the frontend receives the business names!
-        $query = Transaction::with(['processedBy', 'applicant', 'member.applicant']); 
+        $query = Transaction::with(['processedBy', 'applicant', 'member.applicant'])
+            ->latest();
 
-        // Filter by Transaction Type (e.g., ?type=renewal)
-        if ($request->filled('type')) {
-            $query->where('transaction_type', $request->type);
-        }
-
-        // Filter by Status (e.g., ?status=approved)
-        if ($request->filled('status')) {
-            $query->where('status', $request->status);
-        }
-
-        // Filter by Date Range (e.g., ?start_date=2026-01-01&end_date=2026-12-31)
+        // Filter by type, status, or date...
+        if ($request->filled('type')) $query->where('transaction_type', $request->type);
+        if ($request->filled('status')) $query->where('status', $request->status);
         if ($request->filled('start_date') && $request->filled('end_date')) {
-            $query->whereBetween('created_at', [
-                $request->start_date . ' 00:00:00', 
-                $request->end_date . ' 23:59:59'
-            ]);
+            $query->whereBetween('created_at', [$request->start_date . ' 00:00:00', $request->end_date . ' 23:59:59']);
+        }
+
+        // FIX: If 'all=true' is passed, fetch everything. Otherwise, paginate.
+        if ($request->boolean('all')) {
+            return response()->json(['data' => $query->get()]);
         }
 
         $perPage = $request->input('per_page', 20);
-        
-        // Return paginated results, newest first
-        $transactions = $query->latest()->paginate($perPage);
-
-        return response()->json($transactions);
+        return response()->json($query->paginate($perPage));
     }
 
     /**

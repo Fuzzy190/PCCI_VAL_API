@@ -36,6 +36,11 @@ class PaymentChannelController extends Controller
             'is_active'      => 'boolean'
         ]);
 
+        // EXCLUSIVE ACTIVE LOCK: If this is active, turn all others off
+        if (isset($validated['is_active']) && $validated['is_active']) {
+            PaymentChannel::query()->update(['is_active' => false]);
+        }
+
         $channel = PaymentChannel::create($validated);
 
         return response()->json([
@@ -57,6 +62,11 @@ class PaymentChannelController extends Controller
             'amount'         => 'sometimes|numeric|min:0|nullable',
             'is_active'      => 'boolean'
         ]);
+
+        // EXCLUSIVE ACTIVE LOCK: If this is active, turn all others off
+        if (isset($validated['is_active']) && $validated['is_active']) {
+            PaymentChannel::where('id', '!=', $paymentChannel->id)->update(['is_active' => false]);
+        }
 
         $paymentChannel->update($validated);
 

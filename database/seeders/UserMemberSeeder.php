@@ -50,13 +50,13 @@ class UserMemberSeeder extends Seeder
             $credentials[] = "Business: {$businessName} | Rep Name: {$fullName} | Email: {$email} | Password: {$password} | Requires_Password_Change: {$boolString}";
         }
 
-        // Save credentials to file
-        File::put(
-            storage_path('app/member_credentials.txt'),
-            implode("\n", $credentials)
-        );
+        // Save credentials to file (Very sensitive information - handle with care!)
+        // File::put(
+        //     storage_path('app/member_credentials.txt'),
+        //     implode("\n", $credentials)
+        // );
 
+        // $this->command->info('Credentials saved to storage/app/member_credentials.txt');
         $this->command->info('Users seeded successfully.');
-        $this->command->info('Credentials saved to storage/app/member_credentials.txt');
     }
 }

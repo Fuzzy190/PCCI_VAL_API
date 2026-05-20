@@ -493,7 +493,7 @@ class MemberController extends Controller
         // AUTO-GENERATE OR NUMBER IF MISSING
         // ==========================================
         $existingOr = ($transaction && $transaction->or_number) ? $transaction->or_number : ($payment ? $payment->or_number : null);
-        $finalOrNumber = $existingOr ?: 'PCCI-OR-' . date('Y') . '-' . strtoupper(substr(uniqid(), -6));
+        $finalOrNumber = $existingOr ?: 'OR-' . date('Y') . '-' . strtoupper(substr(uniqid(), -6));
 
         // 3. Mark Everything as Approved and attach the OR Number
         DB::transaction(function () use ($transaction, $payment, $due, $member, $finalOrNumber, $amount) {
