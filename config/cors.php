@@ -15,28 +15,13 @@ return [
     |
     */
 
-    'paths' => ['api/*', 'sanctum/csrf-cookie'],
-
+    'paths' => ['api/*', 'sanctum/csrf-cookie', 'login', 'logout'],
     'allowed_methods' => ['*'],
-
-    'allowed_origins' => [
-        env('FRONTEND_URL', 'http://localhost:3000'),
-        'http://127.0.0.1:8000',
-        'http://127.0.0.1:8001',
-        'http://localhost:8000',
-        'http://localhost:8001',
-        'http://192.168.55.107:8000',
-        'http://0.0.0.0:8000',
-    ],
-
-    'allowed_origins_patterns' => [],
-
+    'allowed_origins' => ['http://127.0.0.1:8001'], // Make sure this matches your frontend port
     'allowed_headers' => ['*'],
-
-    'exposed_headers' => [],
-
-    'max_age' => 0,
-
     'supports_credentials' => true,
-
+    'allowed_headers' => ['*'],
+    'allowed_origins_patterns' => [],
+    'exposed_headers' => [],
+    'max_age' => 0,
 ];

@@ -132,6 +132,9 @@ Route::get('/v1/test-notif', function (Illuminate\Http\Request $request) {
 // =========================================================================
 Route::middleware(['auth:sanctum'])->group(function () {
 
+    // it removes the avatar from both Backblaze and the database, and it can be called from the frontend when the user clicks "Remove Avatar"
+    Route::delete('/user/avatar', [App\Http\Controllers\Api\V1\UserController::class, 'removeAvatar']);
+
     // --- EXEMPT FROM PASSWORD ENFORCEMENT ---
     Route::get('/v1/user', function (Request $request) {
         return new UserResource($request->user());

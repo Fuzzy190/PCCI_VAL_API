@@ -24,11 +24,6 @@ class UserMemberSeeder extends Seeder
             // Generate consistent password per user
             $password = substr(md5($email), 0, 10);
 
-            // =========================================================
-            // CONDITION: Only 'Red Amber Enterprises' forces password change
-            // =========================================================
-            $requiresPasswordChange = ($businessName === 'Red Amber Enterprises');
-
             // Splitting the name into first_name and last_name using representative data
             $user = User::create([
                 'first_name' => $member->applicant->rep_first_name ?? $businessName,

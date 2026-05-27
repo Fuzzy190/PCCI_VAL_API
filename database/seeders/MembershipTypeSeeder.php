@@ -13,7 +13,7 @@ class MembershipTypeSeeder extends Seeder
             'name' => 'Micro', //Nano
             'price' => 500,
             'duration_in_months' => 12,
-            'renewal_price' => null,
+            'renewal_price' => 500,
             'notes' => '1-year membership only',
         ]);
 

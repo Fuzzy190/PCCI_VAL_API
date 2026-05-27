@@ -21,6 +21,10 @@ class UserResource extends JsonResource
             'last_name' => $this->last_name,   // <--- ADD THIS
             'email' => $this->email,
             'roles' => $this->getRoleNames(),
+            // The API must explicitly send 'photo_url'
+            'photo_url' => $this->profile_photo_path
+                ? \Illuminate\Support\Facades\Storage::disk('s3')->temporaryUrl($this->profile_photo_path, now()->addMinutes(60))
+                : null,
             'created_at' => $this->created_at,
         ];
     }

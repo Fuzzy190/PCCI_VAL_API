@@ -6,7 +6,7 @@ use Illuminate\Database\Seeder;
 use App\Models\Transaction;
 use App\Models\Member;
 use App\Models\User;
-use App\Models\MembershipType; // <-- Add this
+use App\Models\MembershipType;
 
 class TransactionSeeder extends Seeder
 {

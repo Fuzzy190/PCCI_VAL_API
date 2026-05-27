@@ -51,7 +51,8 @@ class RegisteredUserController extends Controller
         ]);
 
         // 2. Generate a highly secure temporary password on the backend
-        $plainPassword = Str::random(10) . 'A!1a'; // Example: 8xK9pL2qA!1a
+        $characters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        $plainPassword = substr(str_shuffle(str_repeat($characters, 6)), 0, 6);
 
         // 3. Create the User in the database
         $user = User::create([

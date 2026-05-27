@@ -44,12 +44,13 @@ class User extends Authenticatable
             'requires_password_change' => 'boolean'
         ];
     }
-    
+
     /**
      * Append custom attributes when the model is converted to an array or JSON.
      */
     protected $appends = [
         'profile_photo_url',
+        'photo_url', // Backwards compatibility for frontend
         'name', // Appends the combined name attribute automatically
     ];
 
@@ -57,13 +58,33 @@ class User extends Authenticatable
     {
         return $this->hasOne(Member::class);
     }
-    
-    /**
-     * Automatically combines first and last name when calling $user->name
-     */
+
     public function getNameAttribute()
     {
-        return trim("{$this->first_name} {$this->last_name}");
+        return "{$this->first_name} {$this->last_name}";
+    }
+
+    /**
+     * Automatically convert the database path to a secure, temporary Backblaze URL.
+     */
+    public function getPhotoUrlAttribute()
+    {
+        if ($this->profile_photo_path) {
+            try {
+                // Check if the disk exists
+                if (!\Illuminate\Support\Facades\Storage::disk('s3')->exists($this->profile_photo_path)) {
+                    return null;
+                }
+                return \Illuminate\Support\Facades\Storage::disk('s3')->temporaryUrl(
+                    $this->profile_photo_path,
+                    now()->addMinutes(60)
+                );
+            } catch (\Exception $e) {
+                \Log::error('Backblaze Error: ' . $e->getMessage());
+                return null; // Return null if S3 fails so the page doesn't crash
+            }
+        }
+        return null;
     }
 
     /**
@@ -77,7 +98,7 @@ class User extends Authenticatable
 
         try {
             return Storage::disk('s3')->temporaryUrl(
-                $this->profile_photo_path, 
+                $this->profile_photo_path,
                 now()->addMinutes(60)
             );
         } catch (\Exception $e) {

@@ -123,57 +123,45 @@ class UserController extends Controller
      */
     public function changeInfo(Request $request)
     {
-        $user = $request->user();
+        try {
+            $user = $request->user();
 
-        // 1. Strict Validation: 'sometimes' + 'required' ensures that IF they send the field, it cannot be empty.
-        $request->validate([
-            'first_name' => ['sometimes', 'required', 'string', 'max:255'],
-            'last_name'  => ['sometimes', 'required', 'string', 'max:255'],
-            'email'      => ['sometimes', 'required', 'email', 'max:255', 'unique:users,email,' . $user->id],
-            'image'      => ['nullable', 'image', 'mimes:jpg,jpeg,png', 'max:5120'],
-        ]);
+            // ... (Your validation code)
 
-        // 2. Update fields using $request->has() so it explicitly checks the payload
-        if ($request->has('first_name')) {
-            $user->first_name = $request->first_name;
-        }
+            if ($request->hasFile('image')) {
+                // Log the attempt
+                \Log::info('Attempting image upload for user: ' . $user->id);
 
-        if ($request->has('last_name')) {
-            $user->last_name = $request->last_name;
-        }
-
-        if ($request->has('email')) {
-            $user->email = $request->email;
-        }
-
-        // 3. Handle Image Upload to Backblaze (S3)
-        if ($request->hasFile('image')) {
-
-            if (!empty($user->profile_photo_path)) {
-                Storage::disk('s3')->delete($user->profile_photo_path);
+                $path = $request->file('image')->store('avatars', 's3');
+                $user->profile_photo_path = $path;
             }
 
-            $file = $request->file('image');
-            $extension = $file->getClientOriginalExtension();
-            $filename = 'image_' . time() . '.' . $extension;
+            $user->save();
 
-            $identifier = $user->member ? $user->member->id : $user->id;
+            return response()->json(['message' => 'Success', 'user' => new UserResource($user)]);
+        } catch (\Exception $e) {
+            // This stops the 500 error crash and gives you the specific message
+            \Log::error('Profile Update Failed: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Server Error: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 
-            // Sanitize the full name securely
-            $sanitizedName = Str::slug($user->first_name . ' ' . $user->last_name);
+    public function removeAvatar(Request $request)
+    {
+        $user = $request->user();
 
-            $folderPath = "member/{$identifier}.{$sanitizedName}";
+        if ($user->profile_photo_path) {
+            // Delete the file from Backblaze
+            \Illuminate\Support\Facades\Storage::disk('s3')->delete($user->profile_photo_path);
 
-            $path = $file->storeAs($folderPath, $filename, 's3');
-            $user->profile_photo_path = $path;
+            // Remove path from DB
+            $user->profile_photo_path = null;
+            $user->save();
         }
 
-        $user->save();
-
-        return response()->json([
-            'message' => 'User information updated successfully',
-            'user' => new UserResource($user)
-        ]);
+        return response()->json(['message' => 'Avatar removed successfully']);
     }
 
     /**
