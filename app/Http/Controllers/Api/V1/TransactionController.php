@@ -4,9 +4,10 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\Transaction;
-use App\Models\User;      // <--- ADD THIS
-use App\Models\Applicant; // <--- ADD THIS
-use App\Models\Member;    // <--- ADD THIS
+// use App\Models\User;      // <--- ADD THIS
+// use App\Models\Applicant; // <--- ADD THIS
+// use App\Models\Member;    // <--- ADD THIS
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Http\Request;
 
 class TransactionController extends Controller
@@ -20,20 +21,37 @@ class TransactionController extends Controller
         $query = Transaction::with(['processedBy', 'applicant', 'member.applicant'])
             ->latest();
 
-        // Filter by type, status, or date...
         if ($request->filled('type')) $query->where('transaction_type', $request->type);
         if ($request->filled('status')) $query->where('status', $request->status);
         if ($request->filled('start_date') && $request->filled('end_date')) {
             $query->whereBetween('created_at', [$request->start_date . ' 00:00:00', $request->end_date . ' 23:59:59']);
         }
 
-        // FIX: If 'all=true' is passed, fetch everything. Otherwise, paginate.
-        if ($request->boolean('all')) {
-            return response()->json(['data' => $query->get()]);
+        // Get the data (either paginated or all)
+        $transactions = $request->boolean('all') ? $query->get() : $query->paginate($request->input('per_page', 20));
+
+        // Define the transformation logic
+        $transform = function ($txn) {
+            if ($txn->proof_of_payment_path) {
+                // Generate secure S3 URL
+                $txn->proof_of_payment_url = Storage::disk('s3')->temporaryUrl(
+                    $txn->proof_of_payment_path,
+                    now()->addMinutes(30)
+                );
+            } else {
+                $txn->proof_of_payment_url = null;
+            }
+            return $txn;
+        };
+
+        // Apply transformation based on return type
+        if ($transactions instanceof \Illuminate\Pagination\LengthAwarePaginator) {
+            $transactions->getCollection()->transform($transform);
+        } else {
+            $transactions->transform($transform);
         }
 
-        $perPage = $request->input('per_page', 20);
-        return response()->json($query->paginate($perPage));
+        return response()->json(['data' => $transactions]);
     }
 
     /**

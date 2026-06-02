@@ -21,6 +21,7 @@ class User extends Authenticatable
         'last_name',  // Changed
         'email',
         'password',
+        "contact_number",
         'profile_photo_path',
         'requires_password_change'
     ];
@@ -67,21 +68,21 @@ class User extends Authenticatable
     /**
      * Automatically convert the database path to a secure, temporary Backblaze URL.
      */
+    /**
+     * Automatically convert the database path to a secure, temporary Backblaze URL.
+     */
     public function getPhotoUrlAttribute()
     {
         if ($this->profile_photo_path) {
             try {
-                // Check if the disk exists
-                if (!\Illuminate\Support\Facades\Storage::disk('s3')->exists($this->profile_photo_path)) {
-                    return null;
-                }
+                // We completely removed the exists() check so it loads instantly!
                 return \Illuminate\Support\Facades\Storage::disk('s3')->temporaryUrl(
                     $this->profile_photo_path,
                     now()->addMinutes(60)
                 );
             } catch (\Exception $e) {
                 \Log::error('Backblaze Error: ' . $e->getMessage());
-                return null; // Return null if S3 fails so the page doesn't crash
+                return null;
             }
         }
         return null;
@@ -92,17 +93,16 @@ class User extends Authenticatable
      */
     public function getProfilePhotoUrlAttribute()
     {
-        if (!$this->profile_photo_path) {
-            return null;
+        if ($this->profile_photo_path) {
+            try {
+                return \Illuminate\Support\Facades\Storage::disk('s3')->temporaryUrl(
+                    $this->profile_photo_path,
+                    now()->addMinutes(60)
+                );
+            } catch (\Exception $e) {
+                return null;
+            }
         }
-
-        try {
-            return Storage::disk('s3')->temporaryUrl(
-                $this->profile_photo_path,
-                now()->addMinutes(60)
-            );
-        } catch (\Exception $e) {
-            return null;
-        }
+        return null;
     }
 }

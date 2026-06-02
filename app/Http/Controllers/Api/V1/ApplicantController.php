@@ -73,12 +73,16 @@ class ApplicantController extends Controller
         return new ApplicantResource($applicant);
     }
 
-    public function show(Applicant $applicant)
+    /**
+     * Display a specific applicant
+     */
+    public function show(Request $request, Applicant $applicant)
     {
-        $user = auth()->user();
+        $user = $request->user();
 
-        if ($user->hasRole('treasurer') && !in_array($applicant->status, ['approved', 'paid'])) {
-            return response()->json(['message' => 'Access denied.'], 403);
+        // Ensure only authorized admins/treasurers can view this
+        if (!$user->hasAnyRole(['super_admin', 'admin', 'treasurer'])) {
+            return response()->json(['message' => 'Unauthorized.'], 403);
         }
 
         return new ApplicantResource($applicant);

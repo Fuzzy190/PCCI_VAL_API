@@ -24,12 +24,16 @@ class UserMemberSeeder extends Seeder
             // Generate consistent password per user
             $password = substr(md5($email), 0, 10);
 
+            // Define the variable here so it doesn't throw an Undefined Variable error
+            $requiresPasswordChange = true;
+
             // Splitting the name into first_name and last_name using representative data
             $user = User::create([
-                'first_name' => $member->applicant->rep_first_name ?? $businessName,
-                'last_name'  => $member->applicant->rep_surname ?? 'Member',
-                'email'      => $email,
-                'password'   => Hash::make($password),
+                'first_name'     => $member->applicant->rep_first_name ?? $businessName,
+                'last_name'      => $member->applicant->rep_surname ?? 'Member',
+                'email'          => $email,
+                'password'       => Hash::make($password),
+                'contact_number' => $member->applicant->telephone_no ?? $member->applicant->contact_number ?? null,
                 'requires_password_change' => $requiresPasswordChange,
             ]);
 

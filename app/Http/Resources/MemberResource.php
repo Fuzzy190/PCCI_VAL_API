@@ -17,7 +17,8 @@ class MemberResource extends JsonResource
             // 👇 reuse applicant resource
             'applicant' => new ApplicantResource($this->whenLoaded('applicant')),
 
-            // 'membership_type_id' => $this->membership_type_id,
+            // 👇 ADD THIS LINE SO FRONTEND GETS THE UPDATED USER INFO!
+            'user' => new UserResource($this->whenLoaded('user')),
 
             MemberResource::mergeWhen($this->membershipType, [
                 'membership_type' => [

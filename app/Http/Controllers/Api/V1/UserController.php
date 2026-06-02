@@ -118,7 +118,7 @@ class UserController extends Controller
     }
 
     /**
-     * Update user information (first_name, last_name, email, and profile image)
+     * Update user information (first_name, last_name, email, contact_number, and profile image)
      * PUT or POST /api/v1/user/change-info
      */
     public function changeInfo(Request $request)
@@ -126,21 +126,64 @@ class UserController extends Controller
         try {
             $user = $request->user();
 
-            // ... (Your validation code)
+            // 1. Validate the incoming data
+            $validated = $request->validate([
+                'first_name'     => 'nullable|string|max:255',
+                'last_name'      => 'nullable|string|max:255',
+                'email'          => 'nullable|email|max:255|unique:users,email,' . $user->id,
+                'contact_number' => 'nullable|string|max:255',
+                'image'          => 'nullable|image|max:5120',
+            ]);
 
+            // 2. Save Text Data to the Database
+            if ($request->filled('first_name')) {
+                $user->first_name = $validated['first_name'];
+            }
+            if ($request->filled('last_name')) {
+                $user->last_name = $validated['last_name'];
+            }
+            if ($request->filled('email')) {
+                $user->email = $validated['email'];
+            }
+            if ($request->filled('contact_number')) {
+                $user->contact_number = $validated['contact_number'];
+            }
+
+            // 3. Save Image to Backblaze
             if ($request->hasFile('image')) {
-                // Log the attempt
                 \Log::info('Attempting image upload for user: ' . $user->id);
+
+                // Delete old image if it exists to save space
+                if ($user->profile_photo_path) {
+                    \Illuminate\Support\Facades\Storage::disk('s3')->delete($user->profile_photo_path);
+                }
 
                 $path = $request->file('image')->store('avatars', 's3');
                 $user->profile_photo_path = $path;
             }
 
+            // 4. Execute the Save
             $user->save();
 
-            return response()->json(['message' => 'Success', 'user' => new UserResource($user)]);
+            // 5. Sync the email with the Applicant record (Keeps member data consistent)
+            if ($user->is_member && $user->member && $user->member->applicant) {
+                $applicant = $user->member->applicant;
+                if ($request->filled('email')) {
+                    $applicant->email = $validated['email'];
+                    $applicant->save();
+                }
+            }
+
+            return response()->json([
+                'message' => 'Success',
+                'user' => new UserResource($user)
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'message' => 'Validation Error',
+                'errors' => $e->errors()
+            ], 422);
         } catch (\Exception $e) {
-            // This stops the 500 error crash and gives you the specific message
             \Log::error('Profile Update Failed: ' . $e->getMessage());
             return response()->json([
                 'message' => 'Server Error: ' . $e->getMessage()

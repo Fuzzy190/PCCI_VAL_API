@@ -222,6 +222,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
             // POST ==>> Reject member renewal payments
             Route::post('v1/members/reject-renewal-payment/{paymentId}', [MemberController::class, 'rejectRenewalPayment']);
+            Route::post('/applicants/{applicant}/reject', [ApplicantController::class, 'reject']);
 
             Route::apiResource('v1/payments', PaymentController::class);
 

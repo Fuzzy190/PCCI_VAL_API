@@ -310,11 +310,29 @@ class MemberController extends Controller
     {
         $user = Auth::user();
         $member = $user->member;
-        if (!$member) return response()->json(['message' => 'You are not registered as a member'], 404);
 
-        // FIX: We MUST include 'applicant' here so the frontend receives the Business Name!
+        if (!$member) {
+            return response()->json(['message' => 'You are not registered as a member'], 404);
+        }
+
+        // 1. Fetch member using the resource to retain all mappings
+        $member->load(['membershipType', 'membershipDues', 'applicant']);
+        $memberData = (new MemberResource($member))->toArray(request());
+
+        // 2. FORCE-INJECT the User data directly into the member payload
+        // This guarantees the frontend gets the photo_url even if MemberResource hides it!
+        $memberData['user'] = [
+            'id' => $user->id,
+            'first_name' => $user->first_name,
+            'last_name' => $user->last_name,
+            'email' => $user->email,
+            'contact_number' => $user->contact_number,
+            'photo_url' => $user->photo_url,
+            'profile_photo_path' => $user->profile_photo_path,
+        ];
+
         return response()->json([
-            'member' => new MemberResource($member->load(['membershipType', 'membershipDues', 'user', 'applicant'])),
+            'member' => $memberData,
             'membership_status' => $member->status,
             'membership_end_date' => $member->membership_end_date,
             'has_active_dues' => $member->hasPaidCurrentYearDues(),
