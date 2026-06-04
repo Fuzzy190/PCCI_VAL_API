@@ -11,32 +11,32 @@ class MemberResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
+        $membershipType = $this->whenLoaded('membershipType', function () {
+            return [
+                'id'   => $this->membershipType?->id,
+                'name' => $this->membershipType?->name,
+            ];
+        }, function () {
+            // Fallback: if not loaded but relation ID exists, still return what we have
+            return $this->membership_type_id ? [
+                'id'   => $this->membership_type_id,
+                'name' => $this->membershipType?->name ?? null,
+            ] : ['id' => null, 'name' => null];
+        });
+
         return [
             'id' => $this->id,
-
-            // 👇 reuse applicant resource
             'applicant' => new ApplicantResource($this->whenLoaded('applicant')),
-
-            // 👇 ADD THIS LINE SO FRONTEND GETS THE UPDATED USER INFO!
             'user' => new UserResource($this->whenLoaded('user')),
 
-            MemberResource::mergeWhen($this->membershipType, [
-                'membership_type' => [
-                    'id' => $this->membershipType?->id,
-                    'name' => $this->membershipType?->name,
-                ],
-            ]),
-            'induction_date' => $this->induction_date,
+            // Both snake_case and camelCase so every frontend path finds it
+            'membership_type'  => $membershipType,
+            'membershipType'   => $membershipType,
+
+            'induction_date'      => $this->induction_date,
             'membership_end_date' => $this->membership_end_date,
-            'status' => $this->status,
-            'created_by' => $this->whenLoaded('createdBy', function () {
-                return [
-                    'id' => $this->createdBy?->id,
-                    'name' => $this->createdBy?->name,
-                    'email' => $this->createdBy?->email,
-                ];
-            }),
-            'created_at' => $this->created_at,
+            'status'              => $this->status,
+            'created_at'          => $this->created_at,
         ];
     }
 }

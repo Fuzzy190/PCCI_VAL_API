@@ -37,7 +37,7 @@ class MemberController extends Controller
     public function index()
     {
         return MemberResource::collection(
-            Member::with('applicant')->latest()->get()
+            Member::with(['applicant', 'membershipType', 'user'])->latest()->get()
         );
     }
 
@@ -315,12 +315,109 @@ class MemberController extends Controller
             return response()->json(['message' => 'You are not registered as a member'], 404);
         }
 
-        // 1. Fetch member using the resource to retain all mappings
+        // Load relationships we may need
         $member->load(['membershipType', 'membershipDues', 'applicant']);
-        $memberData = (new MemberResource($member))->toArray(request());
 
-        // 2. FORCE-INJECT the User data directly into the member payload
-        // This guarantees the frontend gets the photo_url even if MemberResource hides it!
+        // Use resource to build canonical payload
+        $memberData = (new MemberResource($member))->resolve();
+
+        // 1) If membership name is missing, try to recover from applicant
+        $membershipName = $memberData['membership_type']['name'] ?? null;
+        $membershipDebug = [
+            'resource_has' => !empty($membershipName),
+            'applicant_has' => false,
+            'transaction_has' => false,
+            'relation_has' => false,
+            'final_name' => $membershipName,
+        ];
+        if (empty($membershipName)) {
+            $applicant = $member->applicant;
+            if ($applicant) {
+                // Applicant may store a membership_type_id or a free-text membership_type
+                if (!empty($applicant->membership_type_id)) {
+                    $mt = MembershipType::find($applicant->membership_type_id);
+                    if ($mt) {
+                        $memberData['membership_type'] = [
+                            'id' => $mt->id,
+                            'name' => $mt->name,
+                        ];
+                        $membershipName = $mt->name;
+                        $membershipDebug['applicant_has'] = true;
+                        $membershipDebug['final_name'] = $membershipName;
+                    }
+                } elseif (!empty($applicant->membership_type)) {
+                    $memberData['membership_type'] = [
+                        'id' => null,
+                        'name' => $applicant->membership_type,
+                    ];
+                    $membershipName = $applicant->membership_type;
+                    $membershipDebug['applicant_has'] = true;
+                    $membershipDebug['final_name'] = $membershipName;
+                }
+            }
+        }
+
+        // 2) Still missing? Try latest approved/paid transaction (member or applicant)
+        if (empty($membershipName)) {
+            $txn = Transaction::where(function ($q) use ($member) {
+                $q->where('member_id', $member->id)
+                    ->orWhere('applicant_id', $member->applicant_id);
+            })
+                ->whereIn('status', ['approved', 'paid', 'completed'])
+                ->latest()
+                ->first();
+
+            if ($txn) {
+                if (!empty($txn->membership_type_id)) {
+                    $mt = MembershipType::find($txn->membership_type_id);
+                    if ($mt) {
+                        $memberData['membership_type'] = [
+                            'id' => $mt->id,
+                            'name' => $mt->name,
+                        ];
+                        $membershipName = $mt->name;
+                        $membershipDebug['transaction_has'] = true;
+                        $membershipDebug['final_name'] = $membershipName;
+                    }
+                } elseif (!empty($txn->membership_type)) {
+                    $memberData['membership_type'] = [
+                        'id' => null,
+                        'name' => $txn->membership_type,
+                    ];
+                    $membershipName = $txn->membership_type;
+                    $membershipDebug['transaction_has'] = true;
+                    $membershipDebug['final_name'] = $membershipName;
+                } elseif (!empty($txn->membershipType->name)) {
+                    $memberData['membership_type'] = [
+                        'id' => $txn->membershipType->id,
+                        'name' => $txn->membershipType->name,
+                    ];
+                    $membershipName = $txn->membershipType->name;
+                    $membershipDebug['transaction_has'] = true;
+                    $membershipDebug['final_name'] = $membershipName;
+                }
+            }
+        }
+
+        // 3) Final fallback: if still empty, keep a safe 'N/A'
+        if (empty($memberData['membership_type']['name'])) {
+            // If model relation has a name, use it
+            if ($member->membershipType && !empty($member->membershipType->name)) {
+                $memberData['membership_type'] = [
+                    'id' => $member->membershipType->id ?? null,
+                    'name' => $member->membershipType->name ?? 'N/A',
+                ];
+                $membershipDebug['relation_has'] = true;
+                $membershipDebug['final_name'] = $memberData['membership_type']['name'];
+            } else {
+                $memberData['membership_type'] = [
+                    'id' => $memberData['membership_type']['id'] ?? null,
+                    'name' => 'N/A',
+                ];
+            }
+        }
+
+        // FORCE-INJECT user info so frontend gets photo_url etc.
         $memberData['user'] = [
             'id' => $user->id,
             'first_name' => $user->first_name,
@@ -331,12 +428,37 @@ class MemberController extends Controller
             'profile_photo_path' => $user->profile_photo_path,
         ];
 
+        // Compatibility shim: ensure both snake_case and camelCase keys are present
+        if (!empty($memberData['membership_type']) && empty($memberData['membershipType'])) {
+            $memberData['membershipType'] = $memberData['membership_type'];
+        }
+
+        // If membership_type is missing but model relation exists, populate both keys
+        if (empty($memberData['membership_type']) && $member->membershipType) {
+            $memberData['membership_type'] = [
+                'id' => $member->membershipType->id ?? null,
+                'name' => $member->membershipType->name ?? 'N/A',
+            ];
+            if (empty($memberData['membershipType'])) {
+                $memberData['membershipType'] = $memberData['membership_type'];
+            }
+        }
+
+        // Also inject into nested applicant so frontend fallback paths work too
+        if (!empty($memberData['membership_type']['name']) && isset($memberData['applicant'])) {
+            $memberData['applicant']['membershipType'] = $memberData['membership_type'];
+            $memberData['applicant']['membership_type'] = $memberData['membership_type'];
+        }
+
         return response()->json([
             'member' => $memberData,
+            'membershipType' => $memberData['membershipType'] ?? $memberData['membership_type'] ?? null,
+            'membership_type' => $memberData['membership_type'] ?? $memberData['membershipType'] ?? null,
             'membership_status' => $member->status,
             'membership_end_date' => $member->membership_end_date,
             'has_active_dues' => $member->hasPaidCurrentYearDues(),
             'has_overdue_dues' => $member->hasOverdueDues(),
+            'membership_debug' => $membershipDebug,
         ]);
     }
 

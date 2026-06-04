@@ -257,9 +257,9 @@ Route::middleware(['auth:sanctum'])->group(function () {
         });
 
         // ---------------------------------------------------------------------
-        // SUPER ADMIN, ADMIN, AND MEMBERS
+        // SUPER ADMIN, ADMIN, TREASURER, AND MEMBERS
         // ---------------------------------------------------------------------
-        Route::middleware(['role:member|admin|super_admin'])->group(function () {
+        Route::middleware(['role:member|admin|super_admin|treasurer'])->group(function () {
             Route::apiResource('v1/products', ProductController::class);
         });
 

@@ -20,6 +20,8 @@ class ProductRequest extends FormRequest
             'description' => 'nullable|string',
             'photo' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
             'status' => 'sometimes|in:active,inactive',
+            'user_id' => 'sometimes|integer|exists:users,id',
+            'member_id' => 'sometimes|integer|exists:members,id',
         ];
     }
 }

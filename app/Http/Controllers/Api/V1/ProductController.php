@@ -1,6 +1,8 @@
 <?php
+
 namespace App\Http\Controllers\Api\V1;
 
+use App\Models\Member;
 use App\Models\Product;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\ProductRequest;
@@ -16,19 +18,26 @@ class ProductController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
-        $query = Product::query();
+        $query = Product::with('user');
 
-        // Regular member → only their own products
-        if (!$user->hasAnyRole(['super_admin', 'admin'])) {
-            $query->where('user_id', $user->id);
-                // ->where('status', 'active'); // optional, if you want public listing
-        }
+        $hasElevatedAccess = $user->hasAnyRole(['super_admin', 'admin', 'treasurer']);
 
-        // Admin → can filter by user_id or see all
-        if ($user->hasAnyRole(['super_admin', 'admin'])) {
-            if ($request->filled('user_id')) {
-                $query->where('user_id', $request->user_id);
+        if ($request->filled('member_id')) {
+            $member = Member::find($request->member_id);
+            if (!$member) {
+                return response()->json(['message' => 'Member not found.'], 404);
             }
+
+            if (!$hasElevatedAccess && $member->user_id !== $user->id) {
+                return response()->json(['message' => 'Unauthorized to view products for this member.'], 403);
+            }
+
+            $query->where('user_id', $member->user_id);
+        } elseif ($request->filled('user_id') && $hasElevatedAccess) {
+            $query->where('user_id', $request->user_id);
+        } elseif (!$hasElevatedAccess) {
+            // Regular member → only their own products
+            $query->where('user_id', $user->id);
         }
 
         // Optional status filter
@@ -49,6 +58,7 @@ class ProductController extends Controller
     {
         $products = $request->user()
             ->products()
+            ->with('user')
             ->latest()
             ->paginate(10);
 
@@ -67,12 +77,33 @@ class ProductController extends Controller
                 ->store('products', 's3');
         }
 
-        $data['status'] = 'active'; // default
-        $data['user_id'] = auth()->id();
+        $data['status'] = $data['status'] ?? 'active';
+
+        if ($request->filled('member_id')) {
+            $member = Member::find($request->member_id);
+            if (!$member) {
+                return response()->json(['message' => 'Member not found.'], 404);
+            }
+            if (!auth()->user()->hasAnyRole(['super_admin', 'admin', 'treasurer']) && $member->user_id !== auth()->id()) {
+                return response()->json([
+                    'message' => 'Unauthorized to assign a product to another member.'
+                ], 403);
+            }
+            $data['user_id'] = $member->user_id;
+        } elseif ($request->filled('user_id')) {
+            if (!auth()->user()->hasAnyRole(['super_admin', 'admin', 'treasurer'])) {
+                return response()->json([
+                    'message' => 'Unauthorized to assign a product to another user.'
+                ], 403);
+            }
+            $data['user_id'] = $request->user_id;
+        } else {
+            $data['user_id'] = auth()->id();
+        }
 
         $product = Product::create($data);
 
-        return new ProductResource($product);
+        return new ProductResource($product->load('user'));
     }
 
     /**
@@ -81,24 +112,28 @@ class ProductController extends Controller
     public function show(Product $product)
     {
         // If inactive, only owner can see
-        if ($product->status === 'inactive' &&
-            $product->user_id !== auth()->id()) {
+        if (
+            $product->status === 'inactive' &&
+            $product->user_id !== auth()->id()
+        ) {
             return response()->json([
                 'message' => 'Not found.'
             ], 404);
         }
 
-        return new ProductResource($product);
+        return new ProductResource($product->load('user'));
     }
 
-   /**
-     * Update product (including status)
+    /**
+     * Update product
      */
     public function update(Request $request, Product $product)
     {
-        if ($product->user_id !== auth()->id()) {
+        $hasElevatedAccess = auth()->user()->hasAnyRole(['super_admin', 'admin', 'treasurer']);
+
+        if ($product->user_id !== auth()->id() && !$hasElevatedAccess) {
             return response()->json([
-                'message' => 'Unauthorized'
+                'message' => 'Unauthorized. You do not own this product.'
             ], 403);
         }
 
@@ -107,18 +142,39 @@ class ProductController extends Controller
             'description' => 'nullable|string',
             'photo' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
             'status' => 'sometimes|in:active,inactive',
+            'user_id' => 'sometimes|integer|exists:users,id',
         ]);
 
-        if ($request->hasFile('photo')) {
+        if ($request->filled('member_id')) {
+            $member = Member::find($request->member_id);
+            if (!$member) {
+                return response()->json(['message' => 'Member not found.'], 404);
+            }
+            if (!$hasElevatedAccess && $member->user_id !== auth()->id()) {
+                return response()->json([
+                    'message' => 'Unauthorized to reassign product ownership.'
+                ], 403);
+            }
+            $data['user_id'] = $member->user_id;
+        }
 
-            // 1. Delete the old photo from S3 if it exists
+        if ($request->filled('user_id')) {
+            if (!$hasElevatedAccess) {
+                return response()->json([
+                    'message' => 'Unauthorized to reassign product ownership.'
+                ], 403);
+            }
+            $data['user_id'] = $request->user_id;
+        }
+
+        if ($request->hasFile('photo')) {
+            // Delete the old photo from S3 if it exists
             if ($product->photo_path) {
                 Storage::disk('s3')->delete($product->photo_path);
             }
 
-            // 2. Store the new photo in S3
-            $data['photo_path'] = $request->file('photo')
-                ->store('products', 's3');
+            // Store the new photo in S3
+            $data['photo_path'] = $request->file('photo')->store('products', 's3');
         }
 
         $product->update($data);
@@ -131,20 +187,20 @@ class ProductController extends Controller
      */
     public function destroy(Product $product)
     {
-        if ($product->user_id !== auth()->id()) {
+        if ($product->user_id !== auth()->id() && !auth()->user()->hasAnyRole(['super_admin', 'admin', 'treasurer'])) {
             return response()->json([
-                'message' => 'Unauthorized'
+                'message' => 'Unauthorized. You do not own this product.'
             ], 403);
         }
 
         if ($product->photo_path) {
-            Storage::disk('public')->delete($product->photo_path);
+            Storage::disk('s3')->delete($product->photo_path);
         }
 
         $product->delete();
 
         return response()->json([
             'message' => 'Product deleted successfully.'
-        ]);
+        ], 200);
     }
 }

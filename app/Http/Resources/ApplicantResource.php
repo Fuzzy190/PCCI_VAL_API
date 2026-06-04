@@ -18,7 +18,7 @@ class ApplicantResource extends JsonResource
     }
 
     public function toArray(Request $request): array
-    {   
+    {
         $user = $request->user();
 
         // PUBLIC (NO AUTH)
@@ -109,7 +109,7 @@ class ApplicantResource extends JsonResource
         }
 
         // TREASURER
-        if ($user->hasRole('treasurer')){
+        if ($user->hasRole('treasurer')) {
             return [
                 'id' => $this->id,
                 'date_submitted'  => $this->date_submitted?->toDateString(),
@@ -138,7 +138,7 @@ class ApplicantResource extends JsonResource
                 'date_submitted'  => $this->date_submitted?->toDateString(),
                 'status'          => $this->status,
                 'date_approved'   => $this->date_approved?->toDateString(),
-                // 'membership_type' => $this->membership_type,
+                'membership_type' => $this->membership_type,
 
                 // === Backblaze Temporary URLs ===
                 'photo_url'         => $this->getS3Url($this->photo_path, 60),

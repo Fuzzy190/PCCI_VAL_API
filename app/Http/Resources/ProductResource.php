@@ -25,14 +25,22 @@ class ProductResource extends JsonResource
             'user_id' => $this->user_id,
             'name' => $this->name,
             'description' => $this->description,
-            
+
             // === PHOTO (Backblaze Temporary URL) ===
             // For products, you might want a longer duration (e.g., 2 hours / 120 mins) 
             // so the customer doesn't see broken images while browsing
             'photo_url' => $this->getS3Url($this->photo_path, 120),
-                
+
             'status' => $this->status,
             'created_at' => $this->created_at?->toDateTimeString(),
+            'user' => $this->whenLoaded('user', function () {
+                return [
+                    'id' => $this->user?->id,
+                    'first_name' => $this->user?->first_name,
+                    'last_name' => $this->user?->last_name,
+                    'email' => $this->user?->email,
+                ];
+            }),
         ];
     }
 }
