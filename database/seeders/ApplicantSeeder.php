@@ -6,6 +6,7 @@ use Illuminate\Database\Seeder;
 use App\Models\Applicant;
 use Carbon\Carbon;
 use Illuminate\Support\Str;
+use Faker\Factory as Faker; // <--- 1. Import Faker
 
 class ApplicantSeeder extends Seeder
 {
@@ -13,6 +14,9 @@ class ApplicantSeeder extends Seeder
 
     public function run(): void
     {
+        // 2. Initialize Faker localized to the Philippines
+        $faker = Faker::create('en_PH');
+
         $members = [
 
             ['Red Amber Enterprises', 'Red Amber', 'Red Manchos', '09178721018', 'redamber.enterprises@gmail.com'],
@@ -85,50 +89,76 @@ class ApplicantSeeder extends Seeder
         $dataToInsert = [];
 
         foreach ($members as $member) {
-            $names = explode(' ', $member[2]);
-            $first = $names[0];
-            $last = end($names);
+            $nameParts = explode(' ', $member[2]);
+            $first = array_shift($nameParts);
+            $last = implode(' ', $nameParts) ?: 'N/A';
 
-            $dataToInsert[] = [
+            // 3. Generate Authentic Random Data
+            // Format: 09 + 9 random digits
+            $randomMobile = '09' . $faker->numerify('#########');
+            // Format: 02-8 + 7 random digits
+            $randomLandline = '02-' . $faker->numerify('8###-####');
+
+            Applicant::create([
                 'registered_business_name' => $member[0],
                 'trade_name' => $member[1],
+
+                // --- REQUIRED LOCATION & BASIC FIELDS ---
                 'business_address' => 'N/A',
                 'city_municipality' => 'N/A',
                 'province' => 'N/A',
                 'region' => 'N/A',
                 'zip_code' => '0000',
-                'telephone_no' => 'N/A',
+                'member_dob' => '2000-01-01',
                 'website_socmed' => 'N/A',
-                'member_dob' => '2000-01-01', // Use strings for bulk insert
-                'email' => $member[4] ?? Str::random(5) . '@example.com',
-                'tin_no' => 'N/A',
+
+                // --- RANDOMIZED CONTACT INFO ---
+                'rep_contact_no' => (!empty($member[3]) && $member[3] !== 'N/A') ? $member[3] : $randomMobile,
+                'telephone_no' => $randomLandline,
+                'email' => $member[4] ?? $faker->unique()->safeEmail(),
+
+                // --- RANDOMIZED BUSINESS PROFILE DATA ---
+                'industry' => $faker->randomElement(['Retail & E-commerce', 'IT & Technology', 'Manufacturing', 'Food & Beverage', 'Real Estate', 'Education', 'Construction', 'Financial Services']),
+                'about_description' => $faker->paragraph(4),
+                'business_tagline' => $faker->catchPhrase(),
+                'business_hours' => [
+                    'Monday - Friday' => '8:00 AM - 5:00 PM',
+                    'Saturday' => '9:00 AM - 1:00 PM',
+                    'Sunday' => 'Closed',
+                ],
+                'tags' => [$faker->word(), $faker->word(), 'PCCI Valenzuela'],
+
+                // --- STANDARD APPLICANT DATA ---
+                'tin_no' => $faker->numerify('###-###-###-000'),
                 'rep_first_name' => $first,
                 'rep_mid_name' => 'N/A',
                 'rep_surname' => $last,
-                'rep_designation' => 'N/A',
-                'rep_dob' => '1980-01-01',
-                'rep_contact_no' => $member[3],
-                'alt_first_name' => 'N/A',
+                'rep_designation' => $faker->jobTitle(),
+                'rep_dob' => $faker->date('1990-01-01'),
+
+                'alt_first_name' => $faker->firstName(),
                 'alt_mid_name' => 'N/A',
-                'alt_surname' => 'N/A',
-                'alt_designation' => 'N/A',
-                'alt_dob' => '2000-01-01',
-                'alt_contact_no' => 'N/A',
-                'name_of_organization' => 'N/A',
-                'registration_number' => 'N/A',
-                'date_of_registration' => '2000-01-01',
-                'type_of_company' => 'Single Proprietorship',
-                'number_of_employees' => 0,
-                'year_established' => 2000,
+                'alt_surname' => $faker->lastName(),
+                'alt_designation' => $faker->jobTitle(),
+                'alt_dob' => $faker->date('2000-01-01'),
+                'alt_contact_no' => '09' . $faker->numerify('#########'),
+
+                'name_of_organization' => $member[0],
+                'registration_number' => $faker->bothify('SEC-####-####'),
+                'date_of_registration' => $faker->date(),
+                'type_of_company' => $faker->randomElement(['Single Proprietorship', 'Corporation', 'Partnership']),
+                'number_of_employees' => $faker->numberBetween(5, 500),
+                'year_established' => $faker->numberBetween(1990, 2023),
+
                 'mayors_permit_path' => 'N/A',
                 'dti_sec_path' => 'N/A',
                 'proof_of_payment_path' => 'N/A',
                 'recommending_approval' => 'N/A',
                 'status' => 'paid',
-                'date_submitted' => now(),
-                'created_at' => now(), // Important: bulk insert doesn't set these automatically
+                'date_approved' => now(),
+                'created_at' => now(),
                 'updated_at' => now(),
-            ];
+            ]);
         }
 
         // This runs ONE query instead of 68

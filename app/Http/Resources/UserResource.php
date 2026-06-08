@@ -17,9 +17,10 @@ class UserResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $this->name, // Leave this here so nothing else breaks!
-            'first_name' => $this->first_name, // <--- ADD THIS
-            'last_name' => $this->last_name,   // <--- ADD THIS
+            'first_name' => $this->first_name,
+            'last_name' => $this->last_name,
             'email' => $this->email,
+            'contact_number' => $this->contact_number, // REQUIRED: settings blade reads user.contact_number for phone field
             'roles' => $this->getRoleNames(),
             // The API must explicitly send 'photo_url'
             'photo_url' => $this->profile_photo_path

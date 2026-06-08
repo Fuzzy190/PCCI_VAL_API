@@ -217,25 +217,31 @@ class UserController extends Controller
         $validated = $request->validate([
             'first_name' => ['required', 'string', 'max:255'],
             'last_name' => ['required', 'string', 'max:255'],
-            // Ensure email is unique, but skip checking the current user's own email!
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email,' . $userToEdit->id],
-            'role' => ['required', 'string']
+            'contact_number' => ['nullable', 'string', 'max:20'], // Ensure this is validated
         ]);
 
-        // Update basic info
+        // FIX: Explicitly include 'contact_number' in the update array
         $userToEdit->update([
             'first_name' => $validated['first_name'],
             'last_name' => $validated['last_name'],
             'email' => $validated['email'],
+            'contact_number' => $request->input('contact_number'), // This persists to DB
         ]);
 
-        // Sync Spatie Permissions (This removes old roles and applies the new one)
-        if (class_exists('\\Spatie\\Permission\\Models\\Role')) {
-            $userToEdit->syncRoles([$validated['role']]);
+        // Sync Applicant record (if this user is a member)
+        if ($userToEdit->member && $userToEdit->member->applicant) {
+            $userToEdit->member->applicant->update([
+                'rep_contact_no' => $request->input('contact_number')
+            ]);
+        }
+
+        if (class_exists('\Spatie\Permission\Models\Role')) {
+            $userToEdit->syncRoles([$request->role]);
         }
 
         return response()->json([
-            'message' => 'User updated successfully.',
+            'message' => 'Profile updated successfully.',
             'user' => $userToEdit
         ]);
     }

@@ -64,6 +64,9 @@ Route::post('/forgot-password/reset', [OtpPasswordResetController::class, 'reset
 // Public Products
 Route::get('v1/products/active', [PublicProductController::class, 'index']);
 
+// ---> ADD THIS MISSING ROUTE HERE <---
+Route::get('v1/public/products', [PublicProductController::class, 'index']);
+
 // PUBLIC OR GENERAL ACCESS
 Route::get('/v1/payment-channels', [PaymentChannelController::class, 'index']);
 

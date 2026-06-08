@@ -57,17 +57,33 @@ class MemberController extends Controller
             ], 422);
         }
 
+        // 1. Fetch Payment
         $payment = Payment::with('receivedBy')->where('applicant_id', $request->applicant_id)->first();
-        $membershipTypeId = $payment ? $payment->membership_type_id : ($applicant->membership_type_id ?? 1);
-        $membershipType = MembershipType::find($membershipTypeId);
 
-        // STRICTLY ANCHOR TO INDUCTION DATE
+        // 2. DYNAMIC MEMBERSHIP LOOKUP:
+        // Try to match the membership type by price first. 
+        // If that fails, fall back to the ID linked in the payment or applicant record.
+        $membershipType = null;
+        if ($payment && $payment->amount) {
+            $membershipType = MembershipType::where('price', $payment->amount)->first();
+        }
+
+        if (!$membershipType) {
+            $membershipTypeId = $payment ? $payment->membership_type_id : ($applicant->membership_type_id ?? 1);
+            $membershipType = MembershipType::find($membershipTypeId);
+        }
+
+        // Default to ID 1 if still null
+        if (!$membershipType) {
+            $membershipType = MembershipType::find(1);
+        }
+
+        // 3. Dates & Induction
         $inductionDate = $request->induction_date ? Carbon::parse($request->induction_date) : now();
         $duration = $membershipType->duration_in_months ?? 12;
-
-        // Exact anniversary calculation
         $membershipEndDate = $inductionDate->copy()->addMonths($duration);
 
+        // 4. User Account Logic
         $generatedPassword = null;
         $user = User::where('email', $applicant->email)->first();
 
@@ -86,7 +102,8 @@ class MemberController extends Controller
                 'email' => $applicant->email,
                 'password' => Hash::make($generatedPassword),
                 'requires_password_change' => true,
-                'is_member' => true
+                'is_member' => true,
+                'contact_number' => $applicant->rep_contact_no ?? $applicant->telephone_no, // Ensure phone saves
             ]);
 
             $user->assignRole('member');
@@ -113,10 +130,13 @@ class MemberController extends Controller
                         ->subject('Welcome to PCCI - Membership & Account Details');
                 });
             } catch (\Exception $e) {
-                // Failsafe so the DB save still happens even if Gmail is disconnected locally
+                // Log silently if email fails
             }
         } else {
-            $user->update(['is_member' => true]);
+            $user->update([
+                'is_member' => true,
+                'contact_number' => $applicant->rep_contact_no ?? $user->contact_number // Sync phone
+            ]);
         }
 
         $status = 'active';
@@ -124,18 +144,19 @@ class MemberController extends Controller
             $status = 'inactive';
         }
 
+        // 5. Create Member
         $member = Member::create([
             'applicant_id' => $request->applicant_id,
             'user_id' => $user->id,
-            'membership_type_id' => $membershipTypeId,
+            'membership_type_id' => $membershipType->id,
             'induction_date' => $inductionDate,
             'membership_end_date' => $membershipEndDate,
             'status' => $status,
             'created_by_user_id' => auth()->id(),
         ]);
 
+        // 6. Create Due Record
         if ($membershipEndDate) {
-            // EXACT ANNIVERSARY DUE CREATION
             MembershipDue::create([
                 'member_id' => $member->id,
                 'amount' => $membershipType->price ?? $payment->amount ?? 0,
@@ -146,6 +167,7 @@ class MemberController extends Controller
             ]);
         }
 
+        // 7. Notifications
         if ($status === 'inactive') {
             $admins = User::role(['admin', 'super_admin'])->get();
             $businessName = $applicant->registered_business_name ?? $user->first_name;
