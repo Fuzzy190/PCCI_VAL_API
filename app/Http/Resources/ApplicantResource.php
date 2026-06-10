@@ -216,3 +216,69 @@ class ApplicantResource extends JsonResource
         ];
     }
 }
+
+// other fix
+
+// <?php
+
+// namespace App\Http\Resources;
+
+// use Illuminate\Http\Request;
+// use Illuminate\Http\Resources\Json\JsonResource;
+// use Illuminate\Support\Facades\Storage;
+
+// class ApplicantResource extends JsonResource
+// {
+//     private function getS3Url($path, $minutes = 60)
+//     {
+//         if (!$path) return null;
+//         try {
+//             return Storage::disk('s3')->temporaryUrl($path, now()->addMinutes($minutes));
+//         } catch (\Exception $e) {
+//             return null;
+//         }
+//     }
+
+//     public function toArray(Request $request): array
+//     {
+//         return [
+//             // Core Identity
+//             'id' => $this->id,
+//             'status' => $this->status,
+//             'registered_business_name' => $this->registered_business_name,
+//             'trade_name' => $this->trade_name,
+//             'email' => $this->email,
+//             'telephone_no' => $this->telephone_no,
+//             'tin_no' => $this->tin_no,
+
+//             // Business Details
+//             'industry' => $this->industry,
+//             'business_tagline' => $this->business_tagline,
+//             'about_description' => $this->about_description,
+//             'business_hours' => $this->business_hours,
+//             'tags' => $this->tags,
+
+//             // Location
+//             'business_address' => $this->business_address,
+//             'city_municipality' => $this->city_municipality,
+//             'province' => $this->province,
+//             'region' => $this->region,
+//             'zip_code' => $this->zip_code,
+
+//             // Representative
+//             'rep_first_name' => $this->rep_first_name,
+//             'rep_surname' => $this->rep_surname,
+//             'rep_designation' => $this->rep_designation,
+//             'rep_contact_no' => $this->rep_contact_no,
+
+//             // Documents (URLs)
+//             'photo_url' => $this->getS3Url($this->photo_path),
+//             'mayors_permit_url' => $this->getS3Url($this->mayors_permit_path),
+//             'dti_sec_url' => $this->getS3Url($this->dti_sec_path),
+
+//             // Timestamps
+//             'created_at' => $this->created_at ? $this->created_at->toDateTimeString() : null,
+//             'updated_at' => $this->updated_at ? $this->updated_at->toDateTimeString() : null,
+//         ];
+//     }
+// }
